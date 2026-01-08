@@ -52,16 +52,18 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
         context.bindService(serviceIntent, new ServiceConnection() {
             @Override
             public void onServiceConnected(ComponentName name, IBinder binder) {
-                SaidItService.BackgroundRecorderBinder typedBinder = 
-                    (SaidItService.BackgroundRecorderBinder) binder;
-                SaidItService service = typedBinder.getService();
-
-                String action = commandIntent.getAction();
                 try {
+                    SaidItService.BackgroundRecorderBinder typedBinder = 
+                        (SaidItService.BackgroundRecorderBinder) binder;
+                    SaidItService service = typedBinder.getService();
+
+                    String action = commandIntent.getAction();
                     executeCommand(service, action, commandIntent);
                     Log.d(TAG, "Command executed successfully: " + action);
+                } catch (ClassCastException e) {
+                    Log.e(TAG, "Invalid binder type", e);
                 } catch (Exception e) {
-                    Log.e(TAG, "Error executing command: " + action, e);
+                    Log.e(TAG, "Error executing command", e);
                 } finally {
                     context.unbindService(this);
                 }
@@ -78,6 +80,9 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
         switch (action) {
             case ACTION_START_RECORDING:
                 float prependSeconds = intent.getFloatExtra(EXTRA_PREPEND_SECONDS, 60.0f);
+                // Validate prepend seconds (0 to 1 hour)
+                if (prependSeconds < 0) prependSeconds = 0;
+                if (prependSeconds > 3600) prependSeconds = 3600;
                 service.startRecording(prependSeconds);
                 Log.d(TAG, "Started recording with " + prependSeconds + "s prepend");
                 break;
@@ -111,12 +116,18 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
 
             case ACTION_SET_MEMORY_SIZE:
                 int memorySizeMB = intent.getIntExtra(EXTRA_MEMORY_SIZE_MB, 100);
+                // Validate memory size (10 MB to 10 GB)
+                if (memorySizeMB < 10) memorySizeMB = 10;
+                if (memorySizeMB > 10240) memorySizeMB = 10240;
                 service.setMemorySizeMB(memorySizeMB);
                 Log.d(TAG, "Set memory size to " + memorySizeMB + " MB");
                 break;
 
             case ACTION_DUMP_RECORDING:
                 float dumpSeconds = intent.getFloatExtra(EXTRA_PREPEND_SECONDS, 300.0f);
+                // Validate dump seconds (0 to 1 hour)
+                if (dumpSeconds < 0) dumpSeconds = 0;
+                if (dumpSeconds > 3600) dumpSeconds = 3600;
                 String dumpFilename = intent.getStringExtra(EXTRA_FILENAME);
                 if (dumpFilename == null) dumpFilename = "";
                 service.dumpRecording(dumpSeconds, null, dumpFilename);

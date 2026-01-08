@@ -249,7 +249,11 @@ public class DiskAudioBuffer {
      * Clears all buffer files from disk.
      */
     public synchronized void clearAll() {
-        close();
+        try {
+            close();
+        } catch (IOException e) {
+            Log.e(TAG, "Error closing buffer during clearAll", e);
+        }
         
         for (File file : bufferFiles) {
             if (file.exists()) {

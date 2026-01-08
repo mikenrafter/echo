@@ -95,6 +95,7 @@ public class VoiceActivityDetector {
     
     /**
      * Calculates RMS (Root Mean Square) energy of audio samples.
+     * Assumes 16-bit PCM little-endian format (standard for Android AudioRecord).
      */
     private float calculateRMSEnergy(byte[] buffer, int offset, int length) {
         long sum = 0;
