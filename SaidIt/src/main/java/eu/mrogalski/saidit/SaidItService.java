@@ -566,7 +566,12 @@ public class SaidItService extends Service {
             
             // Write to disk buffer if in BATCH_TO_DISK mode
             if (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null && read > 0) {
-                diskAudioBuffer.write(array, offset, read);
+                try {
+                    diskAudioBuffer.write(array, offset, read);
+                } catch (IOException e) {
+                    Log.e(TAG, "Error writing to disk buffer", e);
+                    // Continue recording, just skip this write
+                }
             }
             
             if (read == count) {

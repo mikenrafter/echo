@@ -56,8 +56,12 @@ public class DiskAudioBuffer {
      * Loads existing buffer files from disk and sorts them by creation time.
      */
     private void loadExistingFiles() {
-        File[] files = bufferDir.listFiles((dir, name) -> 
-            name.startsWith(FILE_PREFIX) && name.endsWith(FILE_EXTENSION));
+        File[] files = bufferDir.listFiles(new java.io.FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                return name.startsWith(FILE_PREFIX) && name.endsWith(FILE_EXTENSION);
+            }
+        });
         
         if (files != null) {
             for (File file : files) {
@@ -66,7 +70,12 @@ public class DiskAudioBuffer {
             }
             
             // Sort by filename (which includes timestamp/counter)
-            Collections.sort(bufferFiles, (f1, f2) -> f1.getName().compareTo(f2.getName()));
+            Collections.sort(bufferFiles, new java.util.Comparator<File>() {
+                @Override
+                public int compare(File f1, File f2) {
+                    return f1.getName().compareTo(f2.getName());
+                }
+            });
             
             // Clean up if we exceed max disk usage
             cleanupOldFiles();

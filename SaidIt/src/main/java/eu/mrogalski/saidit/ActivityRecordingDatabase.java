@@ -135,7 +135,10 @@ public class ActivityRecordingDatabase {
         Collections.sort(recordings, new Comparator<ActivityRecording>() {
             @Override
             public int compare(ActivityRecording r1, ActivityRecording r2) {
-                return Long.compare(r2.getTimestamp(), r1.getTimestamp());
+                long t1 = r1.getTimestamp();
+                long t2 = r2.getTimestamp();
+                // Newest first (reverse order)
+                return (t2 < t1) ? -1 : ((t2 == t1) ? 0 : 1);
             }
         });
         
