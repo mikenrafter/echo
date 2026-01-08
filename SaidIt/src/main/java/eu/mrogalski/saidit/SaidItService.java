@@ -50,6 +50,16 @@ public class SaidItService extends Service {
     final AudioMemory audioMemory = new AudioMemory(); // used only in the audio thread
     DiskAudioBuffer diskAudioBuffer; // used only in the audio thread
     volatile StorageMode storageMode = StorageMode.MEMORY_ONLY;
+    
+    // Activity detection
+    volatile boolean activityDetectionEnabled = false;
+    VoiceActivityDetector voiceActivityDetector;
+    ActivityRecordingDatabase activityRecordingDatabase;
+    boolean isRecordingActivity = false;
+    long activityStartTime = 0;
+    long lastActivityTime = 0;
+    WavFileWriter activityWavFileWriter;
+    File activityWavFile;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -72,6 +82,15 @@ public class SaidItService extends Service {
             storageMode = StorageMode.MEMORY_ONLY;
         }
         Log.d(TAG, "Storage mode: " + storageMode);
+        
+        // Initialize activity detection
+        activityDetectionEnabled = preferences.getBoolean(ACTIVITY_DETECTION_ENABLED_KEY, false);
+        if (activityDetectionEnabled) {
+            float threshold = preferences.getFloat(ACTIVITY_DETECTION_THRESHOLD_KEY, 500.0f);
+            voiceActivityDetector = new VoiceActivityDetector(threshold);
+            activityRecordingDatabase = new ActivityRecordingDatabase(this);
+            Log.d(TAG, "Activity detection enabled with threshold: " + threshold);
+        }
 
         audioThread = new HandlerThread("audioThread", Thread.MAX_PRIORITY);
         audioThread.start();

@@ -8,6 +8,12 @@ public class SaidIt {
     static final String MEMORY_SIZE_MB_KEY = "memory_size_mb";
     static final String STORAGE_MODE_KEY = "storage_mode";
     static final String MAX_DISK_USAGE_MB_KEY = "max_disk_usage_mb";
+    static final String ACTIVITY_DETECTION_ENABLED_KEY = "activity_detection_enabled";
+    static final String ACTIVITY_DETECTION_THRESHOLD_KEY = "activity_detection_threshold";
+    static final String ACTIVITY_PRE_BUFFER_SECONDS_KEY = "activity_pre_buffer_seconds";
+    static final String ACTIVITY_POST_BUFFER_SECONDS_KEY = "activity_post_buffer_seconds";
+    static final String ACTIVITY_AUTO_DELETE_DAYS_KEY = "activity_auto_delete_days";
+    static final String ACTIVITY_HIGH_BITRATE_KEY = "activity_high_bitrate";
     static final String SAMPLE_RATE_KEY = "sample_rate";
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
