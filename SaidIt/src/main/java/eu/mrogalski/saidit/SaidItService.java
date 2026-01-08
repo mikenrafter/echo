@@ -365,6 +365,15 @@ public class SaidItService extends Service {
         }
     }
 
+    public int getMemorySizeMB() {
+        return (int) (getMemorySize() / (1024 * 1024));
+    }
+
+    public void setMemorySizeMB(final int memorySizeMB) {
+        final long memorySize = memorySizeMB * 1024L * 1024L;
+        setMemorySize(memorySize);
+    }
+
     public int getSamplingRate() {
         return SAMPLE_RATE;
     }

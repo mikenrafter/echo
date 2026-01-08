@@ -112,6 +112,12 @@
     <string name="option_a_used_ram">A) System memory in use</string>
     <string name="option_b_audio_quality">B) Sound quality</string>
     <string name="used_ram_description">Echo and other apps use system memory to keep their data. Large system memory consumption may slow other apps.</string>
+    <string name="custom_memory_label">Or enter exact memory size:</string>
+    <string name="custom_memory_hint">e.g., 100</string>
+    <string name="custom_memory_description">Enter memory size in megabytes (MB). Minimum: 10 MB. Maximum depends on your device.</string>
+    <string name="apply">Apply</string>
+    <string name="invalid_memory_size">Invalid memory size. Please enter a value between 10 MB and %d MB.</string>
+    <string name="memory_size_applied">Memory size set to %d MB</string>
     <string name="audio_quality_description">Quality of 8kHz is enough to recognize human speech. Higher options offer different tradeoffs between quality and memory consumption.</string>
     <string name="settings_return">Return</string>
 

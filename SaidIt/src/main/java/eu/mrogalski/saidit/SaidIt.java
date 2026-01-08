@@ -5,6 +5,7 @@ public class SaidIt {
     static final String PACKAGE_NAME = "eu.mrogalski.saidit";
     static final String AUDIO_MEMORY_ENABLED_KEY = "audio_memory_enabled";
     static final String AUDIO_MEMORY_SIZE_KEY = "audio_memory_size";
+    static final String MEMORY_SIZE_MB_KEY = "memory_size_mb";
     static final String SAMPLE_RATE_KEY = "sample_rate";
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
