@@ -48,6 +48,8 @@ public class SaidItService extends Service {
     AudioRecord audioRecord; // used only in the audio thread
     WavFileWriter wavFileWriter; // used only in the audio thread
     final AudioMemory audioMemory = new AudioMemory(); // used only in the audio thread
+    DiskAudioBuffer diskAudioBuffer; // used only in the audio thread
+    volatile StorageMode storageMode = StorageMode.MEMORY_ONLY;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -61,6 +63,15 @@ public class SaidItService extends Service {
         SAMPLE_RATE = preferences.getInt(SAMPLE_RATE_KEY, AudioTrack.getNativeOutputSampleRate (AudioManager.STREAM_MUSIC));
         Log.d(TAG, "Sample rate: " + SAMPLE_RATE);
         FILL_RATE = 2 * SAMPLE_RATE;
+        
+        // Load storage mode
+        String modeStr = preferences.getString(STORAGE_MODE_KEY, StorageMode.MEMORY_ONLY.name());
+        try {
+            storageMode = StorageMode.valueOf(modeStr);
+        } catch (IllegalArgumentException e) {
+            storageMode = StorageMode.MEMORY_ONLY;
+        }
+        Log.d(TAG, "Storage mode: " + storageMode);
 
         audioThread = new HandlerThread("audioThread", Thread.MAX_PRIORITY);
         audioThread.start();
@@ -149,6 +160,11 @@ public class SaidItService extends Service {
 
                 Log.d(TAG, "Audio: STARTING AudioRecord");
                 audioMemory.allocate(memorySize);
+                
+                // Initialize disk buffer if in BATCH_TO_DISK mode
+                if (storageMode == StorageMode.BATCH_TO_DISK) {
+                    initializeDiskBuffer();
+                }
 
                 Log.d(TAG, "Audio: STARTING AudioRecord");
                 audioRecord.startRecording();
@@ -181,6 +197,9 @@ public class SaidItService extends Service {
                     audioRecord.release();
                 audioHandler.removeCallbacks(audioReader);
                 audioMemory.allocate(0);
+                
+                // Cleanup disk buffer
+                cleanupDiskBuffer();
             }
         });
 
@@ -374,6 +393,68 @@ public class SaidItService extends Service {
         setMemorySize(memorySize);
     }
 
+    public StorageMode getStorageMode() {
+        return storageMode;
+    }
+
+    public void setStorageMode(final StorageMode mode) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit().putString(STORAGE_MODE_KEY, mode.name()).commit();
+        
+        final StorageMode oldMode = storageMode;
+        storageMode = mode;
+        
+        // Initialize or cleanup based on mode
+        if (mode == StorageMode.BATCH_TO_DISK && diskAudioBuffer == null) {
+            audioHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    initializeDiskBuffer();
+                }
+            });
+        } else if (mode == StorageMode.MEMORY_ONLY && diskAudioBuffer != null) {
+            audioHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    cleanupDiskBuffer();
+                }
+            });
+        }
+    }
+
+    private void initializeDiskBuffer() {
+        // Only called on audio thread
+        assert audioHandler.getLooper() == Looper.myLooper();
+        
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        long maxDiskUsageMB = preferences.getLong(MAX_DISK_USAGE_MB_KEY, 500); // Default 500 MB
+        long maxDiskUsageBytes = maxDiskUsageMB * 1024L * 1024L;
+        
+        File storageDir;
+        if (isExternalStorageWritable()) {
+            storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo");
+        } else {
+            storageDir = getFilesDir();
+        }
+        
+        diskAudioBuffer = new DiskAudioBuffer(storageDir, maxDiskUsageBytes, AudioMemory.CHUNK_SIZE);
+        Log.d(TAG, "Initialized disk buffer with max size: " + maxDiskUsageMB + " MB");
+    }
+
+    private void cleanupDiskBuffer() {
+        // Only called on audio thread
+        assert audioHandler.getLooper() == Looper.myLooper();
+        
+        if (diskAudioBuffer != null) {
+            try {
+                diskAudioBuffer.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Error closing disk buffer", e);
+            }
+            diskAudioBuffer = null;
+        }
+    }
+
     public int getSamplingRate() {
         return SAMPLE_RATE;
     }
@@ -458,9 +539,17 @@ public class SaidItService extends Service {
                 Log.e(TAG, "AUDIO RECORD ERROR - UNKNOWN ERROR");
                 return 0;
             }
+            
+            // Write to active recording file if recording
             if (wavFileWriter != null && read > 0) {
                 wavFileWriter.write(array, offset, read);
             }
+            
+            // Write to disk buffer if in BATCH_TO_DISK mode
+            if (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null && read > 0) {
+                diskAudioBuffer.write(array, offset, read);
+            }
+            
             if (read == count) {
                 // We've filled the buffer, so let's read again.
                 audioHandler.post(audioReader);

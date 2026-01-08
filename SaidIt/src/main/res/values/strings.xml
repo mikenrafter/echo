@@ -118,6 +118,13 @@
     <string name="apply">Apply</string>
     <string name="invalid_memory_size">Invalid memory size. Please enter a value between 10 MB and %d MB.</string>
     <string name="memory_size_applied">Memory size set to %d MB</string>
+    <string name="storage_mode_label">Storage Mode</string>
+    <string name="storage_mode_memory">Memory Only</string>
+    <string name="storage_mode_disk">Batch to Disk</string>
+    <string name="storage_mode_description">Memory Only: Audio stored in RAM only. Batch to Disk: Audio automatically saved to disk in batches.</string>
+    <string name="max_disk_usage_label">Maximum disk usage:</string>
+    <string name="max_disk_usage_hint">e.g., 500</string>
+    <string name="disk_usage_info">Current disk usage: %d MB of %d MB</string>
     <string name="audio_quality_description">Quality of 8kHz is enough to recognize human speech. Higher options offer different tradeoffs between quality and memory consumption.</string>
     <string name="settings_return">Return</string>
 
