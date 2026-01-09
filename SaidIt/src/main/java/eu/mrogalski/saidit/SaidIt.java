@@ -15,6 +15,17 @@ public class SaidIt {
     static final String ACTIVITY_AUTO_DELETE_DAYS_KEY = "activity_auto_delete_days";
     static final String ACTIVITY_HIGH_BITRATE_KEY = "activity_high_bitrate";
     static final String SAMPLE_RATE_KEY = "sample_rate";
+    
+    // Audio effects configuration (applied during export/preview only)
+    static final String EXPORT_NOISE_SUPPRESSION_ENABLED_KEY = "export_noise_suppression_enabled";
+    static final String EXPORT_NOISE_THRESHOLD_KEY = "export_noise_threshold";
+    static final String EXPORT_AUTO_NORMALIZE_ENABLED_KEY = "export_auto_normalize_enabled";
+    
+    // Long silence skipping configuration
+    static final String SILENCE_SKIP_ENABLED_KEY = "silence_skip_enabled";
+    static final String SILENCE_THRESHOLD_KEY = "silence_threshold";
+    static final String SILENCE_SEGMENT_COUNT_KEY = "silence_segment_count"; // How many consecutive silent segments before skipping
+    
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
             "LTsUZgm0soga0mVVNGFj0qoATaoQCE/LamF7yrMCIFm9sEOB1guCEhzdr16sjysrVc2EPRisS83FoJ4K0R8" +
