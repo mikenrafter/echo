@@ -1,6 +1,5 @@
 package eu.mrogalski.saidit;
 
-import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -16,6 +15,7 @@ import android.media.MediaCodecList;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,11 +26,13 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import eu.mrogalski.StringFormat;
 import eu.mrogalski.android.TimeFormat;
 import eu.mrogalski.android.Views;
 
-public class SettingsActivity extends Activity {
+public class SettingsActivity extends AppCompatActivity {
     static final String TAG = SettingsActivity.class.getSimpleName();
     private final MemoryOnClickListener memoryClickListener = new MemoryOnClickListener();
     private final QualityOnClickListener qualityClickListener = new QualityOnClickListener();
@@ -234,9 +236,9 @@ public class SettingsActivity extends Activity {
         @Override
         public void onClick(View v) {
             final long memory = getMultiplier(v) * Runtime.getRuntime().maxMemory() / 4;
-            dialog.show(getFragmentManager(), "Preparing memory");
+            dialog.show(getSupportFragmentManager(), "Preparing memory");
 
-            new Handler().post(new Runnable() {
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
                 @Override
                 public void run() {
                     service.setMemorySize(memory);
@@ -265,9 +267,9 @@ public class SettingsActivity extends Activity {
         @Override
         public void onClick(View v) {
             final int sampleRate = getSampleRate(v);
-            dialog.show(getFragmentManager(), "Preparing memory");
+            dialog.show(getSupportFragmentManager(), "Preparing memory");
 
-            new Handler().post(new Runnable() {
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
                 @Override
                 public void run() {
                     service.setSampleRate(sampleRate);
@@ -315,9 +317,9 @@ public class SettingsActivity extends Activity {
                     return;
                 }
 
-                dialog.show(getFragmentManager(), "Preparing memory");
+                dialog.show(getSupportFragmentManager(), "Preparing memory");
 
-                new Handler().post(new Runnable() {
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
                         service.setMemorySizeMB(memorySizeMB);
@@ -343,7 +345,7 @@ public class SettingsActivity extends Activity {
         public void onClick(View v) {
             final StorageMode mode = getStorageMode(v);
             
-            new Handler().post(new Runnable() {
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
                 @Override
                 public void run() {
                     service.setStorageMode(mode);

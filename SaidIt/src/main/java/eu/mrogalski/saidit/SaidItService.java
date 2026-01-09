@@ -106,7 +106,7 @@ public class SaidItService extends Service {
     public void onDestroy() {
         stopRecording(null, "");
         innerStopListening();
-        stopForeground(true);
+        stopForeground(STOP_FOREGROUND_REMOVE);
     }
 
     @Override
@@ -205,7 +205,7 @@ public class SaidItService extends Service {
         state = STATE_READY;
         Log.d(TAG, "Queueing: STOP LISTENING");
 
-        stopForeground(true);
+        stopForeground(STOP_FOREGROUND_REMOVE);
         stopService(new Intent(this, this.getClass()));
 
         audioHandler.post(new Runnable() {
@@ -553,7 +553,7 @@ public class SaidItService extends Service {
             innerStopListening();
         }
 
-        stopForeground(true);
+        stopForeground(STOP_FOREGROUND_REMOVE);
     }
 
     private void flushAudioRecord() {
@@ -654,7 +654,7 @@ public class SaidItService extends Service {
         final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
         final boolean listeningEnabled = preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true);
         final boolean recording = (state == STATE_RECORDING);
-        final Handler sourceHandler = new Handler();
+        final Handler sourceHandler = new Handler(Looper.getMainLooper());
         // Note that we may not run this for quite a while, if audioReader decides to read a lot of audio!
         audioHandler.post(new Runnable() {
             @Override

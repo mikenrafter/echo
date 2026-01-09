@@ -4,7 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
-import android.app.Fragment;
+import androidx.fragment.app.Fragment;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
@@ -21,6 +21,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -310,7 +311,7 @@ public class SaidItFragment extends Fragment {
                     if (listeningEnabled) {
                         listenButton.setText(R.string.listening_enabled_disable);
                         listenButton.setBackgroundResource(R.drawable.top_green_button);
-                        listenButton.setShadowLayer(0.01f, 0, resources.getDimensionPixelOffset(R.dimen.shadow_offset), resources.getColor(R.color.dark_green));
+                        listenButton.setShadowLayer(0.01f, 0, resources.getDimensionPixelOffset(R.dimen.shadow_offset), androidx.core.content.ContextCompat.getColor(requireContext(), R.color.dark_green));
                     } else {
                         listenButton.setText(R.string.listening_disabled_enable);
                         listenButton.setBackgroundResource(R.drawable.top_gray_button);
@@ -370,9 +371,9 @@ public class SaidItFragment extends Fragment {
                     if (listeningEnabled) {
                         echo.disableListening();
                     } else {
-                        dialog.show(getFragmentManager(), "Preparing memory");
+                        dialog.show(getParentFragmentManager(), "Preparing memory");
 
-                        new Handler().post(new Runnable() {
+                        new Handler(Looper.getMainLooper()).post(new Runnable() {
                             @Override
                             public void run() {
                                 echo.enableListening();
@@ -523,7 +524,7 @@ public class SaidItFragment extends Fragment {
             new RecordingDoneDialog()
                     .setFile(file)
                     .setRuntime(runtime)
-                    .show(activity.getFragmentManager(), "Recording Done");
+                    .show(((androidx.fragment.app.FragmentActivity)activity).getSupportFragmentManager(), "Recording Done");
         }
     }
 }

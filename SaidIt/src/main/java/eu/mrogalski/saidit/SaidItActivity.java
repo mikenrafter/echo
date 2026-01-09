@@ -1,7 +1,6 @@
 package eu.mrogalski.saidit;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -13,9 +12,10 @@ import android.os.Environment;
 import android.provider.Settings;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
-public class SaidItActivity extends Activity {
+public class SaidItActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 5465;
     private boolean isFragmentSet = false;
@@ -116,7 +116,7 @@ public class SaidItActivity extends Activity {
     private void showFragment() {
         if (!isFragmentSet) {
             isFragmentSet = true;
-            getFragmentManager().beginTransaction()
+            getSupportFragmentManager().beginTransaction()
                     .replace(R.id.container, new SaidItFragment(), "main-fragment")
                     .commit();
         }

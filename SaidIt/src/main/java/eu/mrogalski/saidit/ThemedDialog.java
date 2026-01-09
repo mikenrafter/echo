@@ -2,7 +2,7 @@ package eu.mrogalski.saidit;
 
 import android.app.Activity;
 import android.app.Dialog;
-import android.app.DialogFragment;
+import androidx.fragment.app.DialogFragment;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Typeface;
@@ -22,7 +22,7 @@ public class ThemedDialog extends DialogFragment {
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         final Dialog dialog = super.onCreateDialog(savedInstanceState);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.getWindow().getDecorView().setBackgroundDrawable(null);
+        dialog.getWindow().getDecorView().setBackground(null);
         //set dialog width to 90% of screen width
         dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         return dialog;
@@ -51,7 +51,7 @@ public class ThemedDialog extends DialogFragment {
                     if (tag != null) {
                         if (tag.equals("titleBar")) {
                             textView.setTypeface(robotoCondensedBold);
-                            textView.setShadowLayer(0.01f, 0, density * 2, resources.getColor(getShadowColorId()));
+                            textView.setShadowLayer(0.01f, 0, density * 2, androidx.core.content.ContextCompat.getColor(requireContext(), getShadowColorId()));
                         } else if (tag.equals("bold")) {
                             textView.setTypeface(robotoCondensedBold);
                         }
