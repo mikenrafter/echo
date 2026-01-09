@@ -232,7 +232,16 @@ public class SaidItService extends Service {
             public void run() {
                 flushAudioRecord();
                 int prependBytes = (int)(memorySeconds * FILL_RATE);
-                int bytesAvailable = audioMemory.countFilled();
+                int bytesAvailable;
+                
+                // Get bytes available from appropriate storage
+                if (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null) {
+                    bytesAvailable = (int) diskAudioBuffer.getTotalBytes();
+                    Log.d(TAG, "Dumping from disk buffer: " + bytesAvailable + " bytes");
+                } else {
+                    bytesAvailable = audioMemory.countFilled();
+                    Log.d(TAG, "Dumping from memory buffer: " + bytesAvailable + " bytes");
+                }
 
                 int skipBytes = Math.max(0, bytesAvailable - prependBytes);
 
@@ -274,13 +283,26 @@ public class SaidItService extends Service {
                 final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
                 try (WavFileWriter writer = new WavFileWriter(format, file)) {
                     try {
-                        audioMemory.read(skipBytes, new AudioMemory.Consumer() {
-                            @Override
-                            public int consume(byte[] array, int offset, int count) throws IOException {
-                                writer.write(array, offset, count);
-                                return 0;
-                            }
-                        });
+                        // Read from appropriate storage based on mode
+                        if (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null) {
+                            // Read from disk buffer
+                            diskAudioBuffer.read(skipBytes, new AudioMemory.Consumer() {
+                                @Override
+                                public int consume(byte[] array, int offset, int count) throws IOException {
+                                    writer.write(array, offset, count);
+                                    return 0;
+                                }
+                            });
+                        } else {
+                            // Read from memory buffer
+                            audioMemory.read(skipBytes, new AudioMemory.Consumer() {
+                                @Override
+                                public int consume(byte[] array, int offset, int count) throws IOException {
+                                    writer.write(array, offset, count);
+                                    return 0;
+                                }
+                            });
+                        }
                     } catch (IOException e) {
                         // Handle error during file writing
                         showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
@@ -573,6 +595,25 @@ public class SaidItService extends Service {
                     // Continue recording, just skip this write
                 }
             }
+            
+            // TODO: Integrate Voice Activity Detection
+            // Activity detection is initialized but not yet integrated into the audio processing loop.
+            // Future implementation should:
+            // 1. Process audio through VoiceActivityDetector when activityDetectionEnabled is true
+            // 2. Maintain a 5-minute pre-activity buffer
+            // 3. Start recording when activity detected
+            // 4. Continue for 5 minutes after activity ends
+            // 5. Save to disk and add to ActivityRecordingDatabase
+            // Example:
+            // if (activityDetectionEnabled && voiceActivityDetector != null && read > 0) {
+            //     boolean hasActivity = voiceActivityDetector.process(array, offset, read);
+            //     if (hasActivity && !isRecordingActivity) {
+            //         // Start activity recording with pre-buffer
+            //     } else if (!hasActivity && isRecordingActivity && 
+            //                (System.currentTimeMillis() - lastActivityTime > POST_ACTIVITY_BUFFER_MS)) {
+            //         // Stop activity recording and save
+            //     }
+            // }
             
             if (read == count) {
                 // We've filled the buffer, so let's read again.
