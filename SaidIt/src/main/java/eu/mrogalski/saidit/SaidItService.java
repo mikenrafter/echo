@@ -153,7 +153,18 @@ public class SaidItService extends Service {
 
         startService(new Intent(this, this.getClass()));
 
-        final long memorySize = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+        final SharedPreferences preferences = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        long memorySize = preferences.getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+        
+        // Check if memory size was previously verified
+        final boolean memoryVerified = preferences.getBoolean(MEMORY_SIZE_VERIFIED_KEY, false);
+        
+        // If not verified, try to reduce by 10MB and retry next boot
+        if (!memoryVerified) {
+            memorySize = reduceMemorySizeForRetry(memorySize);
+        }
+
+        final long finalMemorySize = memorySize;
 
         audioHandler.post(new Runnable() {
             @SuppressLint("MissingPermission")
@@ -178,7 +189,28 @@ public class SaidItService extends Service {
                 }
 
                 Log.d(TAG, "Audio: STARTING AudioRecord");
-                audioMemory.allocate(memorySize);
+                
+                // Attempt memory allocation and handle OOM
+                if (audioMemory.allocate(finalMemorySize)) {
+                    // Allocation succeeded - mark memory size as verified
+                    getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putBoolean(MEMORY_SIZE_VERIFIED_KEY, true)
+                        .putLong(AUDIO_MEMORY_SIZE_KEY, finalMemorySize)
+                        .commit();
+                    Log.d(TAG, "Memory allocation verified: " + (finalMemorySize / (1024 * 1024)) + " MB");
+                } else {
+                    // Allocation failed - unset verification flag for next boot
+                    getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putBoolean(MEMORY_SIZE_VERIFIED_KEY, false)
+                        .commit();
+                    Log.e(TAG, "Memory allocation failed for " + (finalMemorySize / (1024 * 1024)) + " MB. Will retry with reduced size on next boot.");
+                    audioRecord.release();
+                    audioRecord = null;
+                    state = STATE_READY;
+                    return;
+                }
                 
                 // Initialize disk buffer if in BATCH_TO_DISK mode
                 if (storageMode == StorageMode.BATCH_TO_DISK) {
@@ -411,15 +443,49 @@ public class SaidItService extends Service {
         return audioMemory.getAllocatedMemorySize();
     }
 
+    /**
+     * Reduces the requested memory size by MEMORY_REDUCTION_STEP_MB (10MB) for retry.
+     * If the reduced size would be below 10MB minimum, sets it to 10MB.
+     * @param currentSize The current memory size in bytes
+     * @return The reduced memory size in bytes
+     */
+    private long reduceMemorySizeForRetry(long currentSize) {
+        long reductionBytes = MEMORY_REDUCTION_STEP_MB * 1024 * 1024;
+        long reducedSize = currentSize - reductionBytes;
+        long minMemoryBytes = 10 * 1024 * 1024; // 10 MB minimum
+        
+        if (reducedSize < minMemoryBytes) {
+            Log.w(TAG, "Reduced memory size would be below minimum. Setting to 10 MB.");
+            return minMemoryBytes;
+        }
+        
+        Log.d(TAG, "Reducing memory size from " + (currentSize / (1024 * 1024)) + " MB to " + (reducedSize / (1024 * 1024)) + " MB for retry.");
+        return reducedSize;
+    }
+
     public void setMemorySize(final long memorySize) {
         final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-        preferences.edit().putLong(AUDIO_MEMORY_SIZE_KEY, memorySize).commit();
+        // When user manually sets memory size, reset verification flag to re-verify on next boot
+        preferences.edit()
+            .putLong(AUDIO_MEMORY_SIZE_KEY, memorySize)
+            .putBoolean(MEMORY_SIZE_VERIFIED_KEY, false)
+            .commit();
 
         if(preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true)) {
             audioHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    audioMemory.allocate(memorySize);
+                    if (audioMemory.allocate(memorySize)) {
+                        // Allocation succeeded - mark as verified
+                        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putBoolean(MEMORY_SIZE_VERIFIED_KEY, true)
+                            .commit();
+                        Log.d(TAG, "Manual memory allocation verified: " + (memorySize / (1024 * 1024)) + " MB");
+                    } else {
+                        // Allocation failed - keep flag unset for retry on next boot
+                        Log.e(TAG, "Manual memory allocation failed for " + (memorySize / (1024 * 1024)) + " MB");
+                    }
                 }
             });
         }

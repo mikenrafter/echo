@@ -15,6 +15,10 @@ public class SaidIt {
     static final String ACTIVITY_AUTO_DELETE_DAYS_KEY = "activity_auto_delete_days";
     static final String ACTIVITY_HIGH_BITRATE_KEY = "activity_high_bitrate";
     static final String SAMPLE_RATE_KEY = "sample_rate";
+    
+    // OOM handling configuration
+    static final String MEMORY_SIZE_VERIFIED_KEY = "memory_size_verified";
+    static final long MEMORY_REDUCTION_STEP_MB = 10; // Reduce by 10MB on OOM
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
             "LTsUZgm0soga0mVVNGFj0qoATaoQCE/LamF7yrMCIFm9sEOB1guCEhzdr16sjysrVc2EPRisS83FoJ4K0R8" +

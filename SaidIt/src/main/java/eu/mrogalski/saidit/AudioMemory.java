@@ -1,11 +1,13 @@
 package eu.mrogalski.saidit;
 
 import android.os.SystemClock;
+import android.util.Log;
 
 import java.io.IOException;
 import java.util.LinkedList;
 
 public class AudioMemory {
+    private static final String TAG = AudioMemory.class.getSimpleName();
 
     private final LinkedList<byte[]> filled = new LinkedList<byte[]>();
     private final LinkedList<byte[]> free = new LinkedList<byte[]>();
@@ -17,27 +19,44 @@ public class AudioMemory {
     private int offset = 0;
     static final int CHUNK_SIZE = 1920000; // 20 seconds of 48kHz wav (single channel, 16-bit samples) (1875 kB)
 
-    synchronized public void allocate(long sizeToEnsure) {
-        long currentSize = getAllocatedMemorySize();
-        while(currentSize < sizeToEnsure) {
-            currentSize += CHUNK_SIZE;
-            free.addLast(new byte[CHUNK_SIZE]);
-        }
-        while(!free.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
-            currentSize -= CHUNK_SIZE;
-            free.removeLast();
-        }
-        while(!filled.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
-            currentSize -= CHUNK_SIZE;
-            filled.removeFirst();
-        }
-        if((current != null) && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
-            //currentSize -= CHUNK_SIZE;
+    /**
+     * Attempts to allocate the requested memory size.
+     * @param sizeToEnsure Target memory size in bytes
+     * @return true if allocation succeeded, false if OutOfMemoryError occurred
+     */
+    synchronized public boolean allocate(long sizeToEnsure) {
+        try {
+            long currentSize = getAllocatedMemorySize();
+            while(currentSize < sizeToEnsure) {
+                currentSize += CHUNK_SIZE;
+                free.addLast(new byte[CHUNK_SIZE]);
+            }
+            while(!free.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
+                currentSize -= CHUNK_SIZE;
+                free.removeLast();
+            }
+            while(!filled.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
+                currentSize -= CHUNK_SIZE;
+                filled.removeFirst();
+            }
+            if((current != null) && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
+                //currentSize -= CHUNK_SIZE;
+                current = null;
+                offset = 0;
+                currentWasFilled = false;
+            }
+            System.gc();
+            Log.d(TAG, "Memory allocation succeeded for " + (sizeToEnsure / (1024 * 1024)) + " MB");
+            return true;
+        } catch (OutOfMemoryError e) {
+            Log.e(TAG, "OutOfMemoryError during allocation of " + (sizeToEnsure / (1024 * 1024)) + " MB", e);
+            // Clear as much as we can
+            free.clear();
+            filled.clear();
             current = null;
-            offset = 0;
-            currentWasFilled = false;
+            System.gc();
+            return false;
         }
-        System.gc();
     }
 
     synchronized public long getAllocatedMemorySize() {
