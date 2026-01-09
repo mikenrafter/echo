@@ -51,9 +51,19 @@
         </service>
 
         <receiver android:name=".BroadcastReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="eu.mrogalski.saidit.action.START_RECORDING" />
+                <action android:name="eu.mrogalski.saidit.action.STOP_RECORDING" />
+                <action android:name="eu.mrogalski.saidit.action.ENABLE_LISTENING" />
+                <action android:name="eu.mrogalski.saidit.action.DISABLE_LISTENING" />
+                <action android:name="eu.mrogalski.saidit.action.SET_MEMORY_MODE" />
+                <action android:name="eu.mrogalski.saidit.action.SET_DISK_MODE" />
+                <action android:name="eu.mrogalski.saidit.action.SET_MEMORY_SIZE" />
+                <action android:name="eu.mrogalski.saidit.action.DUMP_RECORDING" />
             </intent-filter>
         </receiver>
 

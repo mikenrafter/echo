@@ -20,9 +20,11 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import eu.mrogalski.StringFormat;
 import eu.mrogalski.android.TimeFormat;
@@ -32,6 +34,8 @@ public class SettingsActivity extends Activity {
     static final String TAG = SettingsActivity.class.getSimpleName();
     private final MemoryOnClickListener memoryClickListener = new MemoryOnClickListener();
     private final QualityOnClickListener qualityClickListener = new QualityOnClickListener();
+    private final CustomMemoryApplyListener customMemoryApplyListener = new CustomMemoryApplyListener();
+    private final StorageModeClickListener storageModeClickListener = new StorageModeClickListener();
 
 
     final WorkingDialog dialog = new WorkingDialog();
@@ -96,6 +100,16 @@ public class SettingsActivity extends Activity {
         else if(samplingRate >= 16000) button = 2;
         else button = 1;
         highlightButton(R.id.quality_8kHz, R.id.quality_16kHz, R.id.quality_48kHz, button);
+        
+        // Highlight storage mode
+        StorageMode mode = service.getStorageMode();
+        highlightButton(R.id.storage_mode_memory, R.id.storage_mode_disk, 
+            mode == StorageMode.MEMORY_ONLY ? 1 : 2);
+    }
+
+    private void highlightButton(int button1, int button2, int i) {
+        findViewById(button1).setBackgroundResource(1 == i ? R.drawable.green_button : R.drawable.gray_button);
+        findViewById(button2).setBackgroundResource(2 == i ? R.drawable.green_button : R.drawable.gray_button);
     }
 
     private void highlightButton(int button1, int button2, int button3, int i) {
@@ -161,6 +175,11 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.memory_low).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.memory_medium).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.memory_high).setOnClickListener(memoryClickListener);
+
+        root.findViewById(R.id.custom_memory_apply).setOnClickListener(customMemoryApplyListener);
+
+        root.findViewById(R.id.storage_mode_memory).setOnClickListener(storageModeClickListener);
+        root.findViewById(R.id.storage_mode_disk).setOnClickListener(storageModeClickListener);
 
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
@@ -269,6 +288,84 @@ public class SettingsActivity extends Activity {
                 return ((Integer) tag).intValue();
             }
             return 8000;
+        }
+    }
+
+    private class CustomMemoryApplyListener implements View.OnClickListener {
+        private static final int MIN_MEMORY_MB = 10;
+
+        @Override
+        public void onClick(View v) {
+            EditText input = (EditText) findViewById(R.id.custom_memory_input);
+            String text = input.getText().toString().trim();
+            
+            if (text.isEmpty()) {
+                Toast.makeText(SettingsActivity.this, R.string.custom_memory_hint, Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            try {
+                final int memorySizeMB = Integer.parseInt(text);
+                final long maxMemoryBytes = Runtime.getRuntime().maxMemory();
+                final int maxMemoryMB = (int) (maxMemoryBytes / (1024 * 1024));
+
+                if (memorySizeMB < MIN_MEMORY_MB || memorySizeMB > maxMemoryMB) {
+                    String message = getString(R.string.invalid_memory_size, maxMemoryMB);
+                    Toast.makeText(SettingsActivity.this, message, Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                dialog.show(getFragmentManager(), "Preparing memory");
+
+                new Handler().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        service.setMemorySizeMB(memorySizeMB);
+                        service.getState(new SaidItService.StateCallback() {
+                            @Override
+                            public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                                syncUI();
+                                String message = getString(R.string.memory_size_applied, memorySizeMB);
+                                Toast.makeText(SettingsActivity.this, message, Toast.LENGTH_SHORT).show();
+                                if (dialog.isVisible()) dialog.dismiss();
+                            }
+                        });
+                    }
+                });
+            } catch (NumberFormatException e) {
+                Toast.makeText(SettingsActivity.this, R.string.custom_memory_hint, Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private class StorageModeClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            final StorageMode mode = getStorageMode(v);
+            
+            new Handler().post(new Runnable() {
+                @Override
+                public void run() {
+                    service.setStorageMode(mode);
+                    highlightButtons();
+                    String modeName = mode == StorageMode.MEMORY_ONLY ? 
+                        getString(R.string.storage_mode_memory) : 
+                        getString(R.string.storage_mode_disk);
+                    Toast.makeText(SettingsActivity.this, 
+                        "Storage mode: " + modeName, 
+                        Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        private StorageMode getStorageMode(View button) {
+            switch (button.getId()) {
+                case R.id.storage_mode_disk:
+                    return StorageMode.BATCH_TO_DISK;
+                case R.id.storage_mode_memory:
+                default:
+                    return StorageMode.MEMORY_ONLY;
+            }
         }
     }
 }
