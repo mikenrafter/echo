@@ -39,6 +39,7 @@ public class SaidItService extends Service {
     static final String TAG = SaidItService.class.getSimpleName();
     private static final int FOREGROUND_NOTIFICATION_ID = 458;
     private static final String YOUR_NOTIFICATION_CHANNEL_ID = "SaidItServiceChannel";
+    private static final String ACTION_AUTO_SAVE = "eu.mrogalski.saidit.ACTION_AUTO_SAVE";
 
     volatile int SAMPLE_RATE;
     volatile int FILL_RATE;
@@ -60,6 +61,9 @@ public class SaidItService extends Service {
     long lastActivityTime = 0;
     WavFileWriter activityWavFileWriter;
     File activityWavFile;
+    
+    // Auto-save
+    private PendingIntent autoSavePendingIntent;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -190,6 +194,9 @@ public class SaidItService extends Service {
                 audioHandler.post(audioReader);
             }
         });
+        
+        // Schedule auto-save if enabled
+        scheduleAutoSave();
 
 
     }
@@ -207,6 +214,9 @@ public class SaidItService extends Service {
 
         stopForeground(true);
         stopService(new Intent(this, this.getClass()));
+        
+        // Cancel auto-save when stopping
+        cancelAutoSave();
 
         audioHandler.post(new Runnable() {
             @Override
@@ -694,6 +704,12 @@ public class SaidItService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Handle auto-save action
+        if (intent != null && ACTION_AUTO_SAVE.equals(intent.getAction())) {
+            handleAutoSave();
+            return START_STICKY;
+        }
+        
         startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         return START_STICKY;
     }
@@ -734,6 +750,76 @@ public class SaidItService extends Service {
         notificationManager.createNotificationChannel(channel);
 
         return notificationBuilder.build();
+    }
+    
+    /**
+     * Schedule automatic saving of recordings at configured intervals.
+     */
+    public void scheduleAutoSave() {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        boolean enabled = prefs.getBoolean(AUTO_SAVE_ENABLED_KEY, false);
+        
+        // Always cancel first to avoid duplicate alarms
+        cancelAutoSave();
+        
+        if (!enabled || state != STATE_LISTENING) {
+            Log.d(TAG, "Auto-save not scheduled: enabled=" + enabled + ", state=" + state);
+            return;
+        }
+        
+        int durationSeconds = prefs.getInt(AUTO_SAVE_DURATION_KEY, 600); // Default 10 minutes
+        long intervalMillis = durationSeconds * 1000L;
+        
+        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        Intent intent = new Intent(this, SaidItService.class);
+        intent.setAction(ACTION_AUTO_SAVE);
+        autoSavePendingIntent = PendingIntent.getService(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        
+        alarmManager.setRepeating(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + intervalMillis,
+            intervalMillis,
+            autoSavePendingIntent
+        );
+        
+        Log.d(TAG, "Auto-save scheduled every " + durationSeconds + " seconds");
+    }
+    
+    /**
+     * Cancel scheduled auto-save.
+     */
+    public void cancelAutoSave() {
+        if (autoSavePendingIntent != null) {
+            Log.d(TAG, "Cancelling auto-save");
+            AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+            alarmManager.cancel(autoSavePendingIntent);
+            autoSavePendingIntent = null;
+        }
+    }
+    
+    /**
+     * Handle an auto-save event.
+     */
+    private void handleAutoSave() {
+        if (state != STATE_LISTENING) {
+            Log.d(TAG, "Auto-save skipped: service not listening");
+            return;
+        }
+        
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        if (!prefs.getBoolean(AUTO_SAVE_ENABLED_KEY, false)) {
+            Log.d(TAG, "Auto-save skipped: feature disabled");
+            return;
+        }
+        
+        int durationSeconds = prefs.getInt(AUTO_SAVE_DURATION_KEY, 600);
+        Log.d(TAG, "Performing auto-save with " + durationSeconds + " seconds of audio");
+        
+        // Dump the recording with the configured duration
+        float durationFloat = (float) durationSeconds;
+        dumpRecording(durationFloat, null, "");
     }
 
 }

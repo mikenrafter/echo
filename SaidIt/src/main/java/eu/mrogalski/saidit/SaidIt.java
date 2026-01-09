@@ -26,6 +26,10 @@ public class SaidIt {
     static final String SILENCE_THRESHOLD_KEY = "silence_threshold";
     static final String SILENCE_SEGMENT_COUNT_KEY = "silence_segment_count"; // How many consecutive silent segments before skipping
     
+    // Auto-save configuration
+    static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";
+    static final String AUTO_SAVE_DURATION_KEY = "auto_save_duration"; // in seconds
+    
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
             "LTsUZgm0soga0mVVNGFj0qoATaoQCE/LamF7yrMCIFm9sEOB1guCEhzdr16sjysrVc2EPRisS83FoJ4K0R8" +
