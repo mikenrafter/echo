@@ -14,6 +14,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Encodes PCM 16-bit mono to AAC-LC and writes into an MP4 (.m4a) container.
  * Thread-safe for single-producer usage on an audio thread.
+ * 
+ * This is the working reference implementation from fix/auto-save-and-performance branch.
  */
 public class AacMp4Writer implements AutoCloseable {
     private static final String TAG = "AacMp4Writer";
