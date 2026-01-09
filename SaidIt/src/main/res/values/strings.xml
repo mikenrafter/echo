@@ -155,8 +155,8 @@
     <string name="thirty_minutes">30 minutes</string>
     <string name="all_memory">All memory</string>
     <string name="auto_save_title">Auto-save</string>
-    <string name="auto_save_description">Automatically save recordings when the memory buffer is full.</string>
-    <string name="auto_save_duration_title">Auto-save duration</string>
+    <string name="auto_save_description">Periodically export the most recent audio to disk. The memory buffer continues recording and is not cleared.</string>
+    <string name="auto_save_duration_title">Auto-save interval</string>
     <string name="listening">Listening</string>
     <string name="disabled">Disabled</string>
     <string name="settings">Settings</string>
@@ -190,4 +190,11 @@
     <string name="tour_bottom_buttons_desc">Use these buttons to access your saved recordings or change the app\'s settings.</string>
     <string name="show_tour">Show Tour</string>
     <string name="no_recordings_yet">No recordings yet.</string>
+
+    <!-- Confirmation Dialogs -->
+    <string name="warning">Warning</string>
+    <string name="clear_buffer_warning">Changing this setting will stop recording and clear the audio memory buffer. Do you want to continue?</string>
+    <string name="clear_buffer_warning_title">Clear Audio Buffer?</string>
+    <string name="continue_action">Continue</string>
+    <string name="cancel">Cancel</string>
 </resources>

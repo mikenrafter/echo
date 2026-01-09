@@ -49,8 +49,22 @@ public class SettingsActivity extends AppCompatActivity {
             } else if (checkedId == R.id.memory_high) {
                 memorySize = (long) (maxMemory * 0.90);
             }
-            service.setMemorySize(memorySize);
-            updateHistoryLimit();
+            
+            final long targetMemorySize = memorySize;
+            
+            // Check if service is listening - if so, this will clear the buffer
+            if (service.getState() != SaidItService.ServiceState.READY) {
+                showClearBufferDialog(() -> {
+                    service.setMemorySize(targetMemorySize);
+                    updateHistoryLimit();
+                }, () -> {
+                    // Revert to previous selection
+                    syncUI();
+                });
+            } else {
+                service.setMemorySize(targetMemorySize);
+                updateHistoryLimit();
+            }
         }
     };
 
@@ -62,8 +76,22 @@ public class SettingsActivity extends AppCompatActivity {
             } else if (checkedId == R.id.quality_48kHz) {
                 sampleRate = 48000;
             }
-            service.setSampleRate(sampleRate);
-            updateHistoryLimit();
+            
+            final int targetSampleRate = sampleRate;
+            
+            // Check if service is listening - if so, this will clear the buffer
+            if (service.getState() != SaidItService.ServiceState.READY) {
+                showClearBufferDialog(() -> {
+                    service.setSampleRate(targetSampleRate);
+                    updateHistoryLimit();
+                }, () -> {
+                    // Revert to previous selection
+                    syncUI();
+                });
+            } else {
+                service.setSampleRate(targetSampleRate);
+                updateHistoryLimit();
+            }
         }
     };
 
@@ -142,7 +170,12 @@ public class SettingsActivity extends AppCompatActivity {
             sharedPreferences.edit().putBoolean("auto_save_enabled", isChecked).apply();
             autoSaveDurationSlider.setEnabled(isChecked);
             autoSaveDurationLabel.setEnabled(isChecked);
-            if (isBound) {
+            if (isBound && service != null) {
+                if (isChecked) {
+                    service.scheduleAutoSave();
+                } else {
+                    service.cancelAutoSave();
+                }
             }
         });
 
@@ -151,6 +184,10 @@ public class SettingsActivity extends AppCompatActivity {
             updateAutoSaveLabel(minutes);
             if (fromUser) {
                 sharedPreferences.edit().putInt("auto_save_duration", minutes * 60).apply();
+                // Re-schedule auto-save with new duration
+                if (isBound && service != null) {
+                    service.scheduleAutoSave();
+                }
             }
         });
     }
@@ -251,5 +288,19 @@ public class SettingsActivity extends AppCompatActivity {
                 autoSaveDurationLabel.setText(getString(R.string.time_join, hourText, minuteText));
             }
         }
+    }
+    
+    private void showClearBufferDialog(Runnable onConfirm, Runnable onCancel) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.clear_buffer_warning_title)
+            .setMessage(R.string.clear_buffer_warning)
+            .setPositiveButton(R.string.continue_action, (dialog, which) -> {
+                if (onConfirm != null) onConfirm.run();
+            })
+            .setNegativeButton(R.string.cancel, (dialog, which) -> {
+                if (onCancel != null) onCancel.run();
+            })
+            .setCancelable(false)
+            .show();
     }
 }

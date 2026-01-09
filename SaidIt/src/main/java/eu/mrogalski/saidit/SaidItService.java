@@ -274,6 +274,9 @@ public class SaidItService extends Service {
                     case ACTION_GET_STATE:
                         broadcastState();
                         break;
+                    case ACTION_AUTO_SAVE:
+                        handleAutoSave();
+                        break;
                 }
             }
         }
@@ -345,6 +348,13 @@ public class SaidItService extends Service {
             if (!mIsTestEnvironment) {
                 audioHandler.post(audioReader);
             }
+            
+            // Broadcast state and schedule auto-save AFTER audio is set up
+            // Use a Handler to ensure this runs after the audio thread completes initialization
+            new Handler(Looper.getMainLooper()).post(() -> {
+                broadcastState();
+                scheduleAutoSave();
+            });
         });
 
         analysisHandler.post(() -> {
@@ -358,6 +368,7 @@ public class SaidItService extends Service {
         state = ServiceState.READY;
 
         Log.d(TAG, "Queueing: STOP LISTENING");
+        cancelAutoSave();
         analysisHandler.removeCallbacks(analysisTick);
         stopForeground(true);
         stopService(new Intent(this, this.getClass()));
@@ -496,8 +507,82 @@ public class SaidItService extends Service {
         });
     }
 
+    public void scheduleAutoSave() {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        boolean enabled = prefs.getBoolean("auto_save_enabled", false);
+        
+        // Always cancel first to avoid duplicate alarms
+        cancelAutoSave();
+        
+        if (!enabled || state == ServiceState.READY) {
+            Log.d(TAG, "Auto-save not scheduled: enabled=" + enabled + ", state=" + state);
+            return;
+        }
+        
+        int durationSeconds = prefs.getInt("auto_save_duration", 600); // Default 10 minutes
+        long intervalMillis = durationSeconds * 1000L;
+        
+        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        Intent intent = new Intent(this, SaidItService.class);
+        intent.setAction(ACTION_AUTO_SAVE);
+        PendingIntent pendingIntent = PendingIntent.getService(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        
+        alarmManager.setRepeating(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + intervalMillis,
+            intervalMillis,
+            pendingIntent
+        );
+        
+        Log.d(TAG, "Auto-save scheduled every " + durationSeconds + " seconds");
+    }
+
+    public void cancelAutoSave() {
+        Log.d(TAG, "Cancelling auto-save");
+        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        Intent intent = new Intent(this, SaidItService.class);
+        intent.setAction(ACTION_AUTO_SAVE);
+        PendingIntent pendingIntent = PendingIntent.getService(
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        alarmManager.cancel(pendingIntent);
+    }
+
+    private void handleAutoSave() {
+        if (state == ServiceState.READY) {
+            Log.d(TAG, "Auto-save skipped: service not listening");
+            return;
+        }
+        
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        if (!prefs.getBoolean("auto_save_enabled", false)) {
+            Log.d(TAG, "Auto-save skipped: disabled in settings");
+            return;
+        }
+        
+        int durationSeconds = prefs.getInt("auto_save_duration", 600);
+        String timestamp = new java.text.SimpleDateFormat("yyyy-MM-DD_HH-mm-ss", java.util.Locale.US)
+            .format(new java.util.Date());
+        String fileName = "Auto-save_" + timestamp;
+        
+        Log.d(TAG, "Executing auto-save: " + fileName + " (" + durationSeconds + "s)");
+        
+        exportRecording(
+            durationSeconds,
+            "aac",
+            new SaidItFragment.NotifyFileReceiver(this),
+            fileName
+        );
+    }
+
     public long getMemorySize() {
         return audioMemory.getAllocatedMemorySize();
+    }
+    
+    public ServiceState getState() {
+        return state;
     }
 
     public void setMemorySize(final long memorySize) {

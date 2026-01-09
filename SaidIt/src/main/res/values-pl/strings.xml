@@ -138,8 +138,8 @@
     <string name="thirty_minutes">30 minut</string>
     <string name="all_memory">Cała pamięć</string>
     <string name="auto_save_title">Automatyczny zapis</string>
-    <string name="auto_save_description">Automatycznie zapisuj nagrania, gdy bufor pamięci jest pełny.</string>
-    <string name="auto_save_duration_title">Czas trwania automatycznego zapisu</string>
+    <string name="auto_save_description">Okresowo eksportuj najnowsze audio na dysk. Bufor pamięci kontynuuje nagrywanie i nie jest czyszczony.</string>
+    <string name="auto_save_duration_title">Interwał automatycznego zapisu</string>
     <string name="listening">Słucham</string>
     <string name="disabled">Wyłączony</string>
     <string name="settings">Ustawienia</string>
