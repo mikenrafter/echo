@@ -71,7 +71,7 @@ public class SaidItFragment extends Fragment {
     private TextView history_limit;
     private TextView history_size;
     private TextView history_size_title;
-    private TextView skipped_audio_info;
+    // Removed separate skipped seconds info; merged into skippedGroupsInfo
     private TextView volumeMeterLabel;
     private int silenceThreshold = 500; // Default from settings
     private int silenceSegmentCount = 3; // Default from settings
@@ -193,7 +193,7 @@ public class SaidItFragment extends Fragment {
         history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
         history_size_title = (TextView) rootView.findViewById(R.id.history_size_title);
-        skipped_audio_info = (TextView) rootView.findViewById(R.id.skipped_audio_info);
+        // skipped_audio_info removed; combined display uses skipped_groups_info
 
         history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
@@ -362,15 +362,7 @@ public class SaidItFragment extends Fragment {
                 rec_time.setText(timeFormatResult.text);
             }
 
-            // Display skipped audio seconds
-            if (skippedSeconds > 0) {
-                int skippedSecondsRounded = Math.round(skippedSeconds);
-                String skippedText = resources.getString(R.string.silence_skipped_seconds_label, skippedSecondsRounded);
-                skipped_audio_info.setText(skippedText);
-                skipped_audio_info.setVisibility(View.VISIBLE);
-            } else {
-                skipped_audio_info.setVisibility(View.GONE);
-            }
+            // No separate skipped seconds display here; combined with groups below
 
             // Fetch live stats for volume and groups
             if (echo != null) {
@@ -389,8 +381,15 @@ public class SaidItFragment extends Fragment {
                             }
                         }
                         if (skippedGroupsInfo != null) {
-                            if (skippedGroups > 0) {
-                                skippedGroupsInfo.setText(resources.getString(R.string.silence_skipped_groups_label, skippedGroups));
+                            // Combine hh:mm:ss skipped and groups into a single line above the button
+                            int total = Math.max(0, Math.round(skippedSeconds));
+                            int hours = total / 3600;
+                            int minutes = (total % 3600) / 60;
+                            int seconds = total % 60;
+                            String hms = String.format("%02d:%02d:%02d", hours, minutes, seconds);
+                            if (skippedGroups > 0 || total > 0) {
+                                String combined = resources.getString(R.string.silence_skipped_combined_label, hms, skippedGroups);
+                                skippedGroupsInfo.setText(combined);
                                 skippedGroupsInfo.setVisibility(View.VISIBLE);
                                 if (viewSkippedSilenceButton != null) viewSkippedSilenceButton.setVisibility(View.VISIBLE);
                             } else {
