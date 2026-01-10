@@ -74,6 +74,23 @@ public class SaidItFragment extends Fragment {
     private TextView volumeMeterLabel;
     private int silenceThreshold = 500; // Default from settings
     private int silenceSegmentCount = 3; // Default from settings
+    
+    // Activity/Silence timeline display
+    private LinearLayout activityTimelineContainer;
+    private LinearLayout activityTimeline;
+    private TimelineSegmentSelection selectedFrom = null;
+    private TimelineSegmentSelection selectedTo = null;
+    
+    // Track which segments are selected for save range
+    private static class TimelineSegmentSelection {
+        SaidItService.TimelineSegment segment;
+        int index;
+        
+        TimelineSegmentSelection(SaidItService.TimelineSegment segment, int index) {
+            this.segment = segment;
+            this.index = index;
+        }
+    }
 
     private LinearLayout rec_section;
     private TextView rec_indicator;
@@ -223,6 +240,10 @@ public class SaidItFragment extends Fragment {
         skippedGroupsInfo = (TextView) rootView.findViewById(R.id.skipped_groups_info);
         viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
         crashLogsInfo = (TextView) rootView.findViewById(R.id.crash_logs_info);
+        
+        // Activity/Silence timeline views
+        activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
+        activityTimeline = (LinearLayout) rootView.findViewById(R.id.activity_timeline);
         
         // Load silence threshold and segment count from preferences
         android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);

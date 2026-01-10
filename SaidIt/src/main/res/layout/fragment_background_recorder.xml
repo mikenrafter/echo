@@ -69,6 +69,40 @@
                 android:progress="0"
                 android:progressDrawable="@android:drawable/progress_horizontal"/>
 
+            <!-- Activity/Silence Timeline -->
+            <LinearLayout
+                android:id="@+id/activity_timeline_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginTop="15dp"
+                android:layout_marginBottom="10dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/activity_timeline_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/activity_timeline_title"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:layout_marginBottom="10dp"/>
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxHeight="300dp">
+
+                    <LinearLayout
+                        android:id="@+id/activity_timeline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"/>
+                </ScrollView>
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/range_help_text"
                 style="@style/SmallText"
