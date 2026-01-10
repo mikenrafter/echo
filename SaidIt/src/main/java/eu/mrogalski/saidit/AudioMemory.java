@@ -22,6 +22,12 @@ public class AudioMemory {
     private volatile boolean filling = false;
     private volatile boolean overwriting = false;
     
+    // Silence skipping configuration
+    private boolean silenceSkipEnabled = false;
+    private int silenceThreshold = 500; // Default threshold for silence detection
+    private int silenceSegmentCount = 3; // Number of consecutive silent segments before skipping
+    private int consecutiveSilentSegments = 0; // Counter for consecutive silent segments
+    
     // Thread-local IO buffer to avoid allocations
     private final ThreadLocal<byte[]> ioBuffer = ThreadLocal.withInitial(() -> new byte[32 * 1024]);
     
@@ -74,34 +80,51 @@ public class AudioMemory {
         byte[] buffer = ioBuffer.get();
         
         while ((read = filler.consume(buffer, 0, buffer.length)) > 0) {
-            rwLock.writeLock().lock();
-            try {
-                if (capacity == 0 || ring == null) break;
-                
-                // Write into ring with wrap-around
-                int first = Math.min(read, capacity - writePos);
-                if (first > 0) {
-                    ring.position(writePos);
-                    ring.put(buffer, 0, first);
-                }
-                
-                int remaining = read - first;
-                if (remaining > 0) {
-                    ring.position(0);
-                    ring.put(buffer, first, remaining);
-                }
-                
-                writePos = (writePos + read) % capacity;
-                int newSize = size + read;
-                if (newSize > capacity) {
-                    overwriting = true;
-                    size = capacity;
+            // Check for silence if enabled
+            boolean isSilent = false;
+            if (silenceSkipEnabled) {
+                isSilent = isChunkSilent(buffer, read);
+                if (isSilent) {
+                    consecutiveSilentSegments++;
                 } else {
-                    size = newSize;
+                    consecutiveSilentSegments = 0;
                 }
-                totalRead += read;
-            } finally {
-                rwLock.writeLock().unlock();
+            }
+            
+            // Skip writing if we have enough consecutive silent segments
+            boolean shouldSkip = silenceSkipEnabled && 
+                                consecutiveSilentSegments >= silenceSegmentCount;
+            
+            if (!shouldSkip) {
+                rwLock.writeLock().lock();
+                try {
+                    if (capacity == 0 || ring == null) break;
+                    
+                    // Write into ring with wrap-around
+                    int first = Math.min(read, capacity - writePos);
+                    if (first > 0) {
+                        ring.position(writePos);
+                        ring.put(buffer, 0, first);
+                    }
+                    
+                    int remaining = read - first;
+                    if (remaining > 0) {
+                        ring.position(0);
+                        ring.put(buffer, first, remaining);
+                    }
+                    
+                    writePos = (writePos + read) % capacity;
+                    int newSize = size + read;
+                    if (newSize > capacity) {
+                        overwriting = true;
+                        size = capacity;
+                    } else {
+                        size = newSize;
+                    }
+                    totalRead += read;
+                } finally {
+                    rwLock.writeLock().unlock();
+                }
             }
         }
         
@@ -198,5 +221,37 @@ public class AudioMemory {
         public int total;
         public int estimation;
         public boolean overwriting;
+    }
+    
+    /**
+     * Configure silence skipping feature.
+     * When enabled, if multiple consecutive segments are silent,
+     * they will not be written to the buffer, saving memory for actual audio.
+     * 
+     * @param enabled Enable or disable silence skipping
+     * @param threshold Silence detection threshold (0-32767)
+     * @param segmentCount Number of consecutive silent segments before skipping
+     */
+    public void configureSilenceSkipping(boolean enabled, int threshold, int segmentCount) {
+        rwLock.writeLock().lock();
+        try {
+            this.silenceSkipEnabled = enabled;
+            this.silenceThreshold = threshold;
+            this.silenceSegmentCount = Math.max(1, segmentCount);
+            this.consecutiveSilentSegments = 0;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+    
+    /**
+     * Check if the current buffer chunk is silent.
+     * Used internally for silence skipping.
+     */
+    private boolean isChunkSilent(byte[] chunk, int length) {
+        if (!silenceSkipEnabled || chunk == null || length == 0) {
+            return false;
+        }
+        return AudioEffects.isSilent(chunk, silenceThreshold);
     }
 }
