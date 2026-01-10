@@ -52,7 +52,7 @@ public class SaidItService extends Service {
     DiskAudioBuffer diskAudioBuffer; // used only in the audio thread
     volatile StorageMode storageMode = StorageMode.MEMORY_ONLY;
     
-    // Activity detection
+    // Voice Activity Detection (VAD) - Records to Echo/VAD subfolder
     volatile boolean activityDetectionEnabled = false;
     VoiceActivityDetector voiceActivityDetector;
     ActivityRecordingDatabase activityRecordingDatabase;
@@ -61,9 +61,16 @@ public class SaidItService extends Service {
     long lastActivityTime = 0;
     WavFileWriter activityWavFileWriter;
     File activityWavFile;
+    float activityDetectionThreshold = 500.0f;
+    int activityPreBufferSeconds = 300;
+    int activityPostBufferSeconds = 300;
+    int activityAutoDeleteDays = 7; // Auto-delete VAD files after this many days
+    boolean activityHighBitrate = false;
     
-    // Auto-save
+    // Auto-save - Records to Echo/AutoSave subfolder
     private PendingIntent autoSavePendingIntent;
+    private PendingIntent autoSaveCleanupPendingIntent;
+    int autoSaveAutoDeleteDays = 7; // Auto-delete auto-save files after this many days
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -94,14 +101,21 @@ public class SaidItService extends Service {
         audioMemory.configureSilenceSkipping(silenceSkipEnabled, silenceThreshold, silenceSegmentCount);
         Log.d(TAG, "Silence skipping: enabled=" + silenceSkipEnabled + ", threshold=" + silenceThreshold + ", segmentCount=" + silenceSegmentCount);
         
-        // Initialize activity detection
+        // Initialize Voice Activity Detection (VAD)
         activityDetectionEnabled = preferences.getBoolean(ACTIVITY_DETECTION_ENABLED_KEY, false);
+        activityDetectionThreshold = preferences.getFloat(ACTIVITY_DETECTION_THRESHOLD_KEY, 500.0f);
+        activityPreBufferSeconds = preferences.getInt(ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300);
+        activityPostBufferSeconds = preferences.getInt(ACTIVITY_POST_BUFFER_SECONDS_KEY, 300);
+        activityAutoDeleteDays = preferences.getInt(ACTIVITY_AUTO_DELETE_DAYS_KEY, 7);
+        activityHighBitrate = preferences.getBoolean(ACTIVITY_HIGH_BITRATE_KEY, false);
         if (activityDetectionEnabled) {
-            float threshold = preferences.getFloat(ACTIVITY_DETECTION_THRESHOLD_KEY, 500.0f);
-            voiceActivityDetector = new VoiceActivityDetector(threshold);
+            voiceActivityDetector = new VoiceActivityDetector(activityDetectionThreshold);
             activityRecordingDatabase = new ActivityRecordingDatabase(this);
-            Log.d(TAG, "Activity detection enabled with threshold: " + threshold);
+            Log.d(TAG, "VAD (Voice Activity Detection) enabled with threshold: " + activityDetectionThreshold);
         }
+        
+        // Initialize auto-save auto-delete configuration
+        autoSaveAutoDeleteDays = preferences.getInt(AUTO_SAVE_AUTO_DELETE_DAYS_KEY, 7);
 
         audioThread = new HandlerThread("audioThread", Thread.MAX_PRIORITY);
         audioThread.start();
@@ -204,6 +218,7 @@ public class SaidItService extends Service {
         
         // Schedule auto-save if enabled
         scheduleAutoSave();
+        scheduleAutoSaveCleanup();
 
 
     }
@@ -224,6 +239,7 @@ public class SaidItService extends Service {
         
         // Cancel auto-save when stopping
         cancelAutoSave();
+        cancelAutoSaveCleanup();
 
         audioHandler.post(new Runnable() {
             @Override
@@ -271,12 +287,13 @@ public class SaidItService extends Service {
                     filename = newFileName + ".wav";
                 }
 
+                // Auto-save files go to Echo/AutoSave subfolder
                 File storageDir;
                 if(isExternalStorageWritable()){
                     // Use public storage directory for Android 11+ (min SDK 30)
-                    storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo");
+                    storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/AutoSave");
                 }else{
-                    storageDir = new File(getFilesDir(), "Echo");
+                    storageDir = new File(getFilesDir(), "Echo/AutoSave");
                 }
 
                 if(!storageDir.exists()){
@@ -559,6 +576,62 @@ public class SaidItService extends Service {
         });
     }
 
+    /**
+     * Configure voice activity detection and activity recording parameters.
+     */
+    public void configureActivityDetection(final boolean enabled, final float threshold,
+                                           final int preBufferSeconds, final int postBufferSeconds,
+                                           final int autoDeleteDays, final boolean highBitrate) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit()
+            .putBoolean(ACTIVITY_DETECTION_ENABLED_KEY, enabled)
+            .putFloat(ACTIVITY_DETECTION_THRESHOLD_KEY, threshold)
+            .putInt(ACTIVITY_PRE_BUFFER_SECONDS_KEY, preBufferSeconds)
+            .putInt(ACTIVITY_POST_BUFFER_SECONDS_KEY, postBufferSeconds)
+            .putInt(ACTIVITY_AUTO_DELETE_DAYS_KEY, autoDeleteDays)
+            .putBoolean(ACTIVITY_HIGH_BITRATE_KEY, highBitrate)
+            .apply();
+
+        activityDetectionThreshold = threshold;
+        activityPreBufferSeconds = preBufferSeconds;
+        activityPostBufferSeconds = postBufferSeconds;
+        activityAutoDeleteDays = autoDeleteDays;
+        activityHighBitrate = highBitrate;
+
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                activityDetectionEnabled = enabled;
+
+                if (!enabled) {
+                    if (isRecordingActivity) {
+                        stopActivityRecording();
+                    }
+                    voiceActivityDetector = null;
+                    return;
+                }
+
+                if (voiceActivityDetector == null) {
+                    voiceActivityDetector = new VoiceActivityDetector(threshold);
+                } else {
+                    voiceActivityDetector.setThreshold(threshold);
+                    voiceActivityDetector.reset();
+                }
+
+                if (activityRecordingDatabase == null) {
+                    activityRecordingDatabase = new ActivityRecordingDatabase(SaidItService.this);
+                }
+
+                Log.d(TAG, "Activity detection configured: enabled=" + enabled
+                        + ", threshold=" + threshold
+                        + ", preBufferSeconds=" + preBufferSeconds
+                        + ", postBufferSeconds=" + postBufferSeconds
+                        + ", autoDeleteDays=" + autoDeleteDays
+                        + ", highBitrate=" + highBitrate);
+            }
+        });
+    }
+
     public interface WavFileReceiver {
         public void fileReady(File file, float runtime);
     }
@@ -662,10 +735,8 @@ public class SaidItService extends Service {
                 
                 // Check if we should stop activity recording (post-activity buffer expired)
                 if (isRecordingActivity && !hasActivity) {
-                    final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-                    int postBufferSeconds = prefs.getInt(ACTIVITY_POST_BUFFER_SECONDS_KEY, 300); // Default 5 minutes
-                    long postBufferMillis = postBufferSeconds * 1000L;
-                    
+                    long postBufferMillis = activityPostBufferSeconds * 1000L;
+
                     if (currentTime - lastActivityTime > postBufferMillis) {
                         stopActivityRecording();
                     }
@@ -764,6 +835,12 @@ public class SaidItService extends Service {
         // Handle auto-save action
         if (intent != null && ACTION_AUTO_SAVE.equals(intent.getAction())) {
             handleAutoSave();
+            return START_STICKY;
+        }
+        
+        // Handle auto-save cleanup action
+        if (intent != null && "eu.mrogalski.saidit.ACTION_AUTO_SAVE_CLEANUP".equals(intent.getAction())) {
+            handleAutoSaveCleanup();
             return START_STICKY;
         }
         
@@ -880,8 +957,105 @@ public class SaidItService extends Service {
     }
     
     /**
+     * Schedule automatic cleanup of old auto-save files.
+     * Deletes auto-save files older than the configured retention period.
+     */
+    public void scheduleAutoSaveCleanup() {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        
+        // Always cancel first to avoid duplicate alarms
+        cancelAutoSaveCleanup();
+        
+        if (state != STATE_LISTENING) {
+            Log.d(TAG, "Auto-save cleanup not scheduled: service not listening");
+            return;
+        }
+        
+        // Schedule cleanup to run daily
+        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        Intent intent = new Intent(this, SaidItService.class);
+        intent.setAction("eu.mrogalski.saidit.ACTION_AUTO_SAVE_CLEANUP");
+        autoSaveCleanupPendingIntent = PendingIntent.getService(
+            this, 1, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        
+        // Schedule daily cleanup (24 hours)
+        long dailyIntervalMillis = 24L * 60L * 60L * 1000L;
+        alarmManager.setRepeating(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + dailyIntervalMillis,
+            dailyIntervalMillis,
+            autoSaveCleanupPendingIntent
+        );
+        
+        Log.d(TAG, "Auto-save cleanup scheduled daily (delete files older than " + autoSaveAutoDeleteDays + " days)");
+    }
+    
+    /**
+     * Cancel scheduled auto-save cleanup.
+     */
+    public void cancelAutoSaveCleanup() {
+        if (autoSaveCleanupPendingIntent != null) {
+            Log.d(TAG, "Cancelling auto-save cleanup");
+            AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+            alarmManager.cancel(autoSaveCleanupPendingIntent);
+            autoSaveCleanupPendingIntent = null;
+        }
+    }
+    
+    /**
+     * Handle auto-save file cleanup event.
+     * Deletes auto-save files older than autoSaveAutoDeleteDays.
+     */
+    private void handleAutoSaveCleanup() {
+        Log.d(TAG, "Performing auto-save cleanup (deleting files older than " + autoSaveAutoDeleteDays + " days)");
+        
+        File autoSaveDir;
+        if (isExternalStorageWritable()) {
+            autoSaveDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/AutoSave");
+        } else {
+            autoSaveDir = new File(getFilesDir(), "Echo/AutoSave");
+        }
+        
+        if (!autoSaveDir.exists() || !autoSaveDir.isDirectory()) {
+            Log.d(TAG, "Auto-save directory does not exist: " + autoSaveDir.getAbsolutePath());
+            return;
+        }
+        
+        // Get current time
+        long currentTime = System.currentTimeMillis();
+        long deleteBeforeTime = currentTime - (autoSaveAutoDeleteDays * 24L * 60L * 60L * 1000L);
+        
+        // List all files in the auto-save directory
+        File[] files = autoSaveDir.listFiles();
+        if (files == null) {
+            Log.d(TAG, "Failed to list files in auto-save directory");
+            return;
+        }
+        
+        int deletedCount = 0;
+        long freedBytes = 0;
+        
+        for (File file : files) {
+            if (file.isFile() && file.lastModified() < deleteBeforeTime) {
+                long fileSize = file.length();
+                if (file.delete()) {
+                    deletedCount++;
+                    freedBytes += fileSize;
+                    Log.d(TAG, "Deleted old auto-save file: " + file.getName());
+                } else {
+                    Log.w(TAG, "Failed to delete auto-save file: " + file.getName());
+                }
+            }
+        }
+        
+        Log.d(TAG, "Auto-save cleanup complete: deleted " + deletedCount + " files, freed " + 
+            (freedBytes / 1024 / 1024) + " MB");
+    }
+    
+    /**
      * Start recording detected voice activity.
-     * Creates a new WAV file and starts writing audio with pre-activity buffer.
+     * Creates a new WAV file in Echo/VAD subfolder and starts writing audio with pre-activity buffer.
      */
     private void startActivityRecording() {
         // Only called on audio thread
@@ -895,29 +1069,28 @@ public class SaidItService extends Service {
             activityStartTime = System.currentTimeMillis();
             isRecordingActivity = true;
             
-            // Create output file
+            // Create output file in Echo/VAD subfolder
             File storageDir;
             if (isExternalStorageWritable()) {
-                storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/Activities");
+                storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/VAD");
             } else {
-                storageDir = new File(getFilesDir(), "activities");
+                storageDir = new File(getFilesDir(), "Echo/VAD");
             }
             
             if (!storageDir.exists()) {
                 storageDir.mkdirs();
             }
             
+            // Filename format: vad_yyyyMMdd_HHmmss.wav (e.g., vad_20260110_143025.wav)
             String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(new java.util.Date());
-            activityWavFile = new File(storageDir, "activity_" + timestamp + ".wav");
+            activityWavFile = new File(storageDir, "vad_" + timestamp + ".wav");
             
             // Initialize WAV writer
             WavAudioFormat wavAudioFormat = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
             activityWavFileWriter = new WavFileWriter(wavAudioFormat, activityWavFile);
             
             // Get pre-activity buffer settings
-            final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-            int preBufferSeconds = prefs.getInt(ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300); // Default 5 minutes
-            int preBufferBytes = (int)(preBufferSeconds * FILL_RATE);
+            int preBufferBytes = (int)(activityPreBufferSeconds * FILL_RATE);
             
             // Write pre-activity buffer from audioMemory
             audioMemory.read(Math.max(0, audioMemory.countFilled() - preBufferBytes), 
@@ -941,7 +1114,7 @@ public class SaidItService extends Service {
     
     /**
      * Stop recording detected voice activity.
-     * Closes the WAV file and adds it to the activity recording database.
+     * Closes the WAV file (stored in Echo/VAD subfolder) and adds it to the VAD recording database.
      */
     private void stopActivityRecording() {
         // Only called on audio thread
@@ -961,9 +1134,7 @@ public class SaidItService extends Service {
                 
                 // Add to database
                 if (activityRecordingDatabase != null && activityWavFile != null) {
-                    final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-                    int autoDeleteDays = prefs.getInt(ACTIVITY_AUTO_DELETE_DAYS_KEY, 7); // Default 7 days
-                    long deleteAfter = System.currentTimeMillis() + (autoDeleteDays * 24L * 60L * 60L * 1000L);
+                    long deleteAfter = System.currentTimeMillis() + (activityAutoDeleteDays * 24L * 60L * 60L * 1000L);
                     
                     ActivityRecording recording = new ActivityRecording(
                         System.currentTimeMillis(), // id

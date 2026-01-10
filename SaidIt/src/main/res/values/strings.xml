@@ -131,12 +131,24 @@
     <string name="silence_skip_description">When enabled, consecutive silent segments will be skipped to save memory.</string>
     <string name="silence_threshold_label">Silence threshold:</string>
     <string name="silence_segment_count_label">Consecutive silent segments to skip:</string>
-    <string name="silence_skipped_label">Silent audio skipped:</string>
+    <string name="silence_skipped_seconds_label">Silent audio skipped: %1$d s</string>
     <string name="auto_save_label">Auto-Save</string>
     <string name="auto_save_enabled">Enable auto-save</string>
     <string name="auto_save_description">Automatically save recordings at regular intervals.</string>
     <string name="auto_save_duration_label">Auto-save interval (seconds):</string>
     <string name="settings_return">Return</string>
+
+    <!-- Activity detection settings -->
+    <string name="activity_detection_label">Activity Detection</string>
+    <string name="activity_detection_enabled">Enable activity detection</string>
+    <string name="activity_detection_description">Detect voice activity automatically and save buffered audio around it.</string>
+    <string name="activity_detection_threshold_label">Sensitivity (higher = less sensitive):</string>
+    <string name="activity_prebuffer_label">Pre-activity buffer (seconds):</string>
+    <string name="activity_postbuffer_label">Post-activity buffer (seconds):</string>
+    <string name="activity_autodelete_label">Auto-delete after (days):</string>
+    <string name="activity_high_bitrate_label">Use high-bitrate recording</string>
+    <string name="activity_detection_updated">Activity detection settings applied</string>
+    <string name="activity_detection_invalid_value">Please enter a value greater than zero.</string>
 
     <!-- Others -->
 

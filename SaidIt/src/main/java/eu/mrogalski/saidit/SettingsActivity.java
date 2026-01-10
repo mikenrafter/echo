@@ -191,6 +191,9 @@ public class SettingsActivity extends Activity {
         
         // Initialize silence skipping controls
         initSilenceSkippingControls(root);
+
+        // Initialize activity detection controls
+        initActivityDetectionControls(root);
         
         // Initialize auto-save controls
         initAutoSaveControls(root);
@@ -448,6 +451,90 @@ public class SettingsActivity extends Activity {
             }
         });
     }
+
+    private void initActivityDetectionControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+
+        final CheckBox activityEnabled = (CheckBox) root.findViewById(R.id.activity_detection_enabled);
+        final SeekBar thresholdSlider = (SeekBar) root.findViewById(R.id.activity_detection_threshold_slider);
+        final TextView thresholdValue = (TextView) root.findViewById(R.id.activity_detection_threshold_value);
+        final EditText preBufferInput = (EditText) root.findViewById(R.id.activity_prebuffer_input);
+        final EditText postBufferInput = (EditText) root.findViewById(R.id.activity_postbuffer_input);
+        final EditText autoDeleteInput = (EditText) root.findViewById(R.id.activity_autodelete_input);
+        final CheckBox highBitrate = (CheckBox) root.findViewById(R.id.activity_high_bitrate);
+
+        // Load existing preferences
+        int savedThreshold = Math.max(50, Math.round(prefs.getFloat(SaidIt.ACTIVITY_DETECTION_THRESHOLD_KEY, 500f)));
+        thresholdSlider.setProgress(savedThreshold);
+        thresholdValue.setText(String.valueOf(savedThreshold));
+        activityEnabled.setChecked(prefs.getBoolean(SaidIt.ACTIVITY_DETECTION_ENABLED_KEY, false));
+        preBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300)));
+        postBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, 300)));
+        autoDeleteInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_AUTO_DELETE_DAYS_KEY, 7)));
+        highBitrate.setChecked(prefs.getBoolean(SaidIt.ACTIVITY_HIGH_BITRATE_KEY, false));
+
+        final Runnable applyWithToast = new Runnable() {
+            @Override
+            public void run() {
+                applyActivityDetectionConfig(prefs, activityEnabled, thresholdSlider, preBufferInput,
+                    postBufferInput, autoDeleteInput, highBitrate, true);
+            }
+        };
+
+        final Runnable applySilently = new Runnable() {
+            @Override
+            public void run() {
+                applyActivityDetectionConfig(prefs, activityEnabled, thresholdSlider, preBufferInput,
+                    postBufferInput, autoDeleteInput, highBitrate, false);
+            }
+        };
+
+        thresholdSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int clamped = Math.max(50, progress);
+                thresholdValue.setText(String.valueOf(clamped));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) { }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (seekBar.getProgress() < 50) {
+                    seekBar.setProgress(50);
+                }
+                applyWithToast.run();
+            }
+        });
+
+        activityEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                applyWithToast.run();
+            }
+        });
+
+        highBitrate.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                applySilently.run();
+            }
+        });
+
+        View.OnFocusChangeListener onBlurApply = new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    applyWithToast.run();
+                }
+            }
+        };
+
+        preBufferInput.setOnFocusChangeListener(onBlurApply);
+        postBufferInput.setOnFocusChangeListener(onBlurApply);
+        autoDeleteInput.setOnFocusChangeListener(onBlurApply);
+    }
     
     private void initAutoSaveControls(View root) {
         final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
@@ -510,5 +597,59 @@ public class SettingsActivity extends Activity {
                 }
             }
         });
+    }
+
+    private void applyActivityDetectionConfig(SharedPreferences prefs,
+                                              CheckBox activityEnabled,
+                                              SeekBar thresholdSlider,
+                                              EditText preBufferInput,
+                                              EditText postBufferInput,
+                                              EditText autoDeleteInput,
+                                              CheckBox highBitrate,
+                                              boolean showToast) {
+        int threshold = Math.max(50, thresholdSlider.getProgress());
+        int preSeconds = clampSeconds(parsePositiveInt(preBufferInput, prefs.getInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300)));
+        int postSeconds = clampSeconds(parsePositiveInt(postBufferInput, prefs.getInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, 300)));
+        int autoDeleteDays = clampDays(parsePositiveInt(autoDeleteInput, prefs.getInt(SaidIt.ACTIVITY_AUTO_DELETE_DAYS_KEY, 7)));
+
+        // Normalize UI values after clamping
+        preBufferInput.setText(String.valueOf(preSeconds));
+        postBufferInput.setText(String.valueOf(postSeconds));
+        autoDeleteInput.setText(String.valueOf(autoDeleteDays));
+
+        prefs.edit()
+            .putFloat(SaidIt.ACTIVITY_DETECTION_THRESHOLD_KEY, threshold)
+            .putInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, preSeconds)
+            .putInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, postSeconds)
+            .putInt(SaidIt.ACTIVITY_AUTO_DELETE_DAYS_KEY, autoDeleteDays)
+            .putBoolean(SaidIt.ACTIVITY_HIGH_BITRATE_KEY, highBitrate.isChecked())
+            .putBoolean(SaidIt.ACTIVITY_DETECTION_ENABLED_KEY, activityEnabled.isChecked())
+            .apply();
+
+        if (service != null) {
+            service.configureActivityDetection(activityEnabled.isChecked(), threshold, preSeconds,
+                postSeconds, autoDeleteDays, highBitrate.isChecked());
+        }
+
+        if (showToast) {
+            Toast.makeText(this, R.string.activity_detection_updated, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private int parsePositiveInt(EditText input, int fallback) {
+        try {
+            int value = Integer.parseInt(input.getText().toString());
+            return value > 0 ? value : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private int clampSeconds(int value) {
+        return Math.max(1, Math.min(value, 3600));
+    }
+
+    private int clampDays(int value) {
+        return Math.max(1, Math.min(value, 365));
     }
 }

@@ -350,8 +350,8 @@ public class SaidItFragment extends Fragment {
 
             // Display skipped audio statistics
             if (skippedSeconds > 0) {
-                TimeFormat.naturalLanguage(resources, skippedSeconds, timeFormatResult);
-                String skippedText = resources.getString(R.string.silence_skipped_label) + " " + timeFormatResult.text;
+                int skippedSecondsRounded = Math.round(skippedSeconds);
+                String skippedText = resources.getString(R.string.silence_skipped_seconds_label, skippedSecondsRounded);
                 skipped_audio_info.setText(skippedText);
                 skipped_audio_info.setVisibility(View.VISIBLE);
             } else {

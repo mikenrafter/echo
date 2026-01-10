@@ -27,9 +27,10 @@ public class SaidIt {
     static final String SILENCE_SEGMENT_COUNT_KEY = "silence_segment_count"; // How many consecutive silent segments before skipping
     static final String TOTAL_SKIPPED_SECONDS_KEY = "total_skipped_seconds"; // Statistics: total seconds skipped
     
-    // Auto-save configuration
+    // Auto-save configuration (records to Echo/AutoSave subfolder)
     static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";
     static final String AUTO_SAVE_DURATION_KEY = "auto_save_duration"; // in seconds
+    static final String AUTO_SAVE_AUTO_DELETE_DAYS_KEY = "auto_save_auto_delete_days"; // Auto-delete files older than this many days
     
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
