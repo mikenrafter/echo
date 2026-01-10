@@ -116,12 +116,16 @@ public class AudioMemory {
 
         synchronized (this) {
             if(offset + read >= current.length) {
-                // Check if chunk is silent for silence skipping
-                boolean isSilent = isChunkSilent(current, current.length);
-                
-                if (silenceSkipEnabled && isSilent) {
-                    consecutiveSilentSegments++;
-                    
+
+                if (silenceSkipEnabled) {
+                    // Check if chunk is silent for silence skipping
+                    boolean isSilent = isChunkSilent(current, current.length);
+                    if (isSilent) {
+                        consecutiveSilentSegments++;
+                    } else {
+                        consecutiveSilentSegments = 0;
+                    }
+
                     // If we have enough consecutive silent segments, overwrite in place
                     if (consecutiveSilentSegments >= silenceSegmentCount) {
                         // Overwrite this silent chunk instead of advancing
