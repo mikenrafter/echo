@@ -34,6 +34,7 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -53,6 +54,11 @@ public class SaidItFragment extends Fragment {
     private static final String YOUR_NOTIFICATION_CHANNEL_ID = "SaidItServiceChannel";
     private Button record_pause_button;
     private Button listenButton;
+    private Button recordClipButton;
+    private ProgressBar volumeMeter;
+    private TextView rangeHelpText;
+    private TextView skippedGroupsInfo;
+    private Button viewSkippedSilenceButton;
 
     ListenButtonClickListener listenButtonClickListener = new ListenButtonClickListener();
     RecordButtonClickListener recordButtonClickListener = new RecordButtonClickListener();
@@ -61,12 +67,6 @@ public class SaidItFragment extends Fragment {
     private boolean isRecording = false;
 
     private LinearLayout ready_section;
-    private Button recordLastFiveMinutesButton;
-    private Button recordMaxButton;
-    private Button recordLastMinuteButton;
-    private Button recordLastThirtyMinuteButton;
-    private Button recordLastTwoHrsButton;
-    private Button recordLastSixHrsButton;
     private TextView history_limit;
     private TextView history_size;
     private TextView history_size_title;
@@ -209,29 +209,16 @@ public class SaidItFragment extends Fragment {
         record_pause_button = (Button) rootView.findViewById(R.id.rec_stop_button);
         record_pause_button.setOnClickListener(recordButtonClickListener);
 
-        recordLastMinuteButton = (Button) rootView.findViewById(R.id.record_last_minute);
-        recordLastMinuteButton.setOnClickListener(recordButtonClickListener);
-        recordLastMinuteButton.setOnLongClickListener(recordButtonClickListener);
+        recordClipButton = (Button) rootView.findViewById(R.id.record_clip_button);
+        if (recordClipButton != null) {
+            recordClipButton.setOnClickListener(recordButtonClickListener);
+            recordClipButton.setOnLongClickListener(recordButtonClickListener);
+        }
 
-        recordLastFiveMinutesButton = (Button) rootView.findViewById(R.id.record_last_5_minutes);
-        recordLastFiveMinutesButton.setOnClickListener(recordButtonClickListener);
-        recordLastFiveMinutesButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastThirtyMinuteButton = (Button) rootView.findViewById(R.id.record_last_30_minutes);
-        recordLastThirtyMinuteButton.setOnClickListener(recordButtonClickListener);
-        recordLastThirtyMinuteButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastTwoHrsButton = (Button) rootView.findViewById(R.id.record_last_2_hrs);
-        recordLastTwoHrsButton.setOnClickListener(recordButtonClickListener);
-        recordLastTwoHrsButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastSixHrsButton = (Button) rootView.findViewById(R.id.record_last_6_hrs);
-        recordLastSixHrsButton.setOnClickListener(recordButtonClickListener);
-        recordLastSixHrsButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordMaxButton = (Button) rootView.findViewById(R.id.record_last_max);
-        recordMaxButton.setOnClickListener(recordButtonClickListener);
-        recordMaxButton.setOnLongClickListener(recordButtonClickListener);
+        volumeMeter = (ProgressBar) rootView.findViewById(R.id.volume_meter);
+        rangeHelpText = (TextView) rootView.findViewById(R.id.range_help_text);
+        skippedGroupsInfo = (TextView) rootView.findViewById(R.id.skipped_groups_info);
+        viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
 
         ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
         rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
@@ -290,6 +277,15 @@ public class SaidItFragment extends Fragment {
                 startActivity(new Intent(activity, SettingsActivity.class));
             }
         });
+
+        if (viewSkippedSilenceButton != null) {
+            viewSkippedSilenceButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startActivity(new Intent(activity, SkippedSilenceActivity.class));
+                }
+            });
+        }
         serviceStateCallback.state(isListening, isRecording, 0, 0, 0, 0);
         return rootView;
     }
@@ -341,7 +337,6 @@ public class SaidItFragment extends Fragment {
             if (!history_size.getText().equals(timeFormatResult.text)) {
                 history_size_title.setText(resources.getQuantityText(R.plurals.history_size_title, timeFormatResult.count));
                 history_size.setText(timeFormatResult.text);
-                recordMaxButton.setText(TimeFormat.shortTimer(memorized));
             }
 
             TimeFormat.naturalLanguage(resources, recorded, timeFormatResult);
@@ -351,7 +346,7 @@ public class SaidItFragment extends Fragment {
                 rec_time.setText(timeFormatResult.text);
             }
 
-            // Display skipped audio statistics
+            // Display skipped audio seconds
             if (skippedSeconds > 0) {
                 int skippedSecondsRounded = Math.round(skippedSeconds);
                 String skippedText = resources.getString(R.string.silence_skipped_seconds_label, skippedSecondsRounded);
@@ -359,6 +354,23 @@ public class SaidItFragment extends Fragment {
                 skipped_audio_info.setVisibility(View.VISIBLE);
             } else {
                 skipped_audio_info.setVisibility(View.GONE);
+            }
+
+            // Fetch live stats for volume and groups
+            if (echo != null) {
+                echo.getLiveStats(new SaidItService.LiveStatsCallback() {
+                    @Override
+                    public void stats(int volumeLevel, int skippedGroups) {
+                        if (volumeMeter != null) {
+                            volumeMeter.setProgress(Math.max(0, Math.min(32767, volumeLevel)));
+                        }
+                        if (skippedGroupsInfo != null) {
+                            skippedGroupsInfo.setText(resources.getString(R.string.silence_skipped_groups_label, skippedGroups));
+                            skippedGroupsInfo.setVisibility(View.VISIBLE);
+                            if (viewSkippedSilenceButton != null) viewSkippedSilenceButton.setVisibility(View.VISIBLE);
+                        }
+                    }
+                });
             }
 
             history_size.postOnAnimationDelayed(updater, 100);
@@ -425,19 +437,24 @@ public class SaidItFragment extends Fragment {
                     getActivity().runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
+                            final boolean isClipButton = button.getId() == R.id.record_clip_button;
+                            final float defaultSeconds = isClipButton ? 300f : 0f;
                             if (recording) {
                                 echo.stopRecording(new PromptFileReceiver(getActivity()),"");
                             } else {
                                 ProgressDialog pd = new ProgressDialog(getActivity());
                                 pd.setMessage("Recording...");
                                 pd.show();
-                                final float seconds = getPrependedSeconds(button);
                                 if (keepRecording) {
-                                    echo.startRecording(seconds);
+                                    echo.startRecording(defaultSeconds);
                                 } else {
-                                    // Range export flow: select FROM then TO, then filename
-                                    pd.dismiss();
-                                    showRangeExportDialog(seconds);
+                                    if (isClipButton) {
+                                        // Range export flow: select FROM then TO, then filename
+                                        pd.dismiss();
+                                        showRangeExportDialog(defaultSeconds);
+                                    } else {
+                                        echo.startRecording(defaultSeconds);
+                                    }
                                 }
                             }
                         }
@@ -552,24 +569,6 @@ public class SaidItFragment extends Fragment {
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
-        }
-
-        float getPrependedSeconds(View button) {
-            switch (button.getId()) {
-                case R.id.record_last_minute:
-                    return 60;
-                case R.id.record_last_5_minutes:
-                    return 60 * 5;
-                case R.id.record_last_30_minutes:
-                    return 60 * 30;
-                case R.id.record_last_2_hrs:
-                    return 60 * 60 * 2;
-                case R.id.record_last_6_hrs:
-                    return 60 * 60 * 6;
-                case R.id.record_last_max:
-                    return 60 * 60 * 24 * 365;
-            }
-            return 0;
         }
     }
 

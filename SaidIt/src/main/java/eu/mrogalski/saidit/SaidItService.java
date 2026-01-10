@@ -75,6 +75,19 @@ public class SaidItService extends Service {
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
 
+    // Live stats
+    volatile int currentVolumeLevel = 0; // 0-32767
+
+    // Silence groups tracking (service-level data models)
+    static class SilenceGroup {
+        public long endTimeMillis;
+        public long durationMillis;
+        public SilenceGroup(long endTimeMillis, long durationMillis) {
+            this.endTimeMillis = endTimeMillis;
+            this.durationMillis = durationMillis;
+        }
+    }
+
     @Override
     public void onCreate() {
 
@@ -741,7 +754,19 @@ public class SaidItService extends Service {
                 Log.e(TAG, "AUDIO RECORD ERROR - UNKNOWN ERROR");
                 return 0;
             }
-            
+            // Compute live volume (peak) for this buffer
+            if (read > 0) {
+                int max = 0;
+                for (int i = 0; i + 1 < read; i += 2) {
+                    int lo = array[offset + i] & 0xff;
+                    int hi = array[offset + i + 1];
+                    int sample = (short)((hi << 8) | lo);
+                    int abs = sample < 0 ? -sample : sample;
+                    if (abs > max) max = abs;
+                }
+                currentVolumeLevel = max;
+            }
+
             // Write to active recording file if recording
             if (wavFileWriter != null && read > 0) {
                 wavFileWriter.write(array, offset, read);
@@ -843,6 +868,9 @@ public class SaidItService extends Service {
             public void run() {
                 flushAudioRecord();
                 final AudioMemory.Stats stats = audioMemory.getStats(FILL_RATE);
+                // Silence group state transitions occur on chunk boundaries within audioMemory.fill()
+                // Here we finalize group closures when audio becomes non-silent.
+                // Group creation/closure handled in audioMemory; we only compute seconds from segments.
                 
                 int recorded = 0;
                 if(wavFileWriter != null) {
@@ -861,6 +889,65 @@ public class SaidItService extends Service {
                                 stats.total * bytesToSeconds,
                                 finalRecorded * bytesToSeconds,
                                 skippedSeconds);
+                    }
+                });
+            }
+        });
+    }
+
+    // Provide live stats for UI (volume and skipped groups)
+    public interface LiveStatsCallback {
+        void stats(int volumeLevel, int skippedGroups);
+    }
+
+    public void getLiveStats(final LiveStatsCallback cb) {
+        final Handler sourceHandler = new Handler();
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                final int volume = currentVolumeLevel;
+                final int groups = audioMemory.getSkippedGroupsCount();
+                sourceHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.stats(volume, groups);
+                    }
+                });
+            }
+        });
+    }
+
+    // Silence groups log API
+    public interface SilenceGroupsCallback {
+        void onGroups(java.util.List<SilenceGroup> groups);
+    }
+
+    public void getSilenceGroups(final SilenceGroupsCallback cb) {
+        final Handler sourceHandler = new Handler();
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                // Translate AudioMemory entries into service-level groups with durations
+                java.util.ArrayList<AudioMemory.SilenceGroupEntry> entries = audioMemory.getSilenceGroupsSnapshot();
+                java.util.ArrayList<SilenceGroup> snapshot = new java.util.ArrayList<>(entries.size());
+                long segmentMillis = (long)(AudioMemory.CHUNK_SIZE * getBytesToSeconds() * 1000);
+                for (AudioMemory.SilenceGroupEntry e : entries) {
+                    long duration = segmentMillis * e.segments;
+                    snapshot.add(new SilenceGroup(e.endTimeMillis, duration));
+                }
+                // Prune based on current memory span
+                int bytesAvailable = audioMemory.countFilled();
+                long memorySpanMillis = (long)(bytesAvailable * getBytesToSeconds() * 1000);
+                long cutoff = System.currentTimeMillis() - memorySpanMillis;
+                java.util.Iterator<SilenceGroup> it = snapshot.iterator();
+                while (it.hasNext()) {
+                    SilenceGroup g = it.next();
+                    if (g.endTimeMillis < cutoff) it.remove();
+                }
+                sourceHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.onGroups(snapshot);
                     }
                 });
             }

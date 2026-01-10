@@ -75,6 +75,12 @@
                 android:value="SaidItActivity" />
         </activity>
 
+        <activity
+            android:name=".SkippedSilenceActivity"
+            android:label="@string/view_skipped_silence"
+            android:exported="false"
+            android:parentActivityName=".SaidItActivity" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

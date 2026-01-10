@@ -548,6 +548,10 @@ public class SettingsActivity extends Activity {
         final EditText durationInput = (EditText) root.findViewById(R.id.auto_save_duration_input);
         int duration = prefs.getInt(SaidIt.AUTO_SAVE_DURATION_KEY, 600);
         durationInput.setText(String.valueOf(duration));
+
+        final EditText autoDeleteInput = (EditText) root.findViewById(R.id.auto_save_autodelete_input);
+        int autoDeleteDays = prefs.getInt(SaidIt.AUTO_SAVE_AUTO_DELETE_DAYS_KEY, 7);
+        autoDeleteInput.setText(String.valueOf(autoDeleteDays));
         
         autoSaveEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -556,11 +560,14 @@ public class SettingsActivity extends Activity {
                 if (isChecked) {
                     try {
                         int duration = Integer.parseInt(durationInput.getText().toString());
+                        int deleteDays = Integer.parseInt(autoDeleteInput.getText().toString());
                         if (duration > 0) {
                             prefs.edit().putInt(SaidIt.AUTO_SAVE_DURATION_KEY, duration).apply();
+                            prefs.edit().putInt(SaidIt.AUTO_SAVE_AUTO_DELETE_DAYS_KEY, Math.max(1, deleteDays)).apply();
                             service.scheduleAutoSave();
+                            service.scheduleAutoSaveCleanup();
                             Toast.makeText(SettingsActivity.this, 
-                                "Auto-save enabled (every " + duration + "s)", 
+                                "Auto-save enabled (every " + duration + "s, auto-delete after " + Math.max(1, deleteDays) + "d)", 
                                 Toast.LENGTH_SHORT).show();
                         } else {
                             autoSaveEnabled.setChecked(false);
@@ -574,6 +581,7 @@ public class SettingsActivity extends Activity {
                     }
                 } else {
                     service.cancelAutoSave();
+                    service.cancelAutoSaveCleanup();
                     Toast.makeText(SettingsActivity.this, 
                         "Auto-save disabled", Toast.LENGTH_SHORT).show();
                 }
@@ -596,6 +604,26 @@ public class SettingsActivity extends Activity {
                     } catch (NumberFormatException e) {
                         Toast.makeText(SettingsActivity.this, 
                             "Invalid duration", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        });
+
+        autoDeleteInput.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus && autoSaveEnabled.isChecked()) {
+                    try {
+                        int days = Integer.parseInt(autoDeleteInput.getText().toString());
+                        days = Math.max(1, days);
+                        prefs.edit().putInt(SaidIt.AUTO_SAVE_AUTO_DELETE_DAYS_KEY, days).apply();
+                        service.cancelAutoSaveCleanup();
+                        service.scheduleAutoSaveCleanup();
+                        Toast.makeText(SettingsActivity.this,
+                            "Auto-save auto-delete set to " + days + " days", Toast.LENGTH_SHORT).show();
+                    } catch (NumberFormatException e) {
+                        Toast.makeText(SettingsActivity.this, 
+                            "Invalid days", Toast.LENGTH_SHORT).show();
                     }
                 }
             }
@@ -629,6 +657,33 @@ public class SettingsActivity extends Activity {
                     Toast.makeText(SettingsActivity.this,
                             isChecked ? "Noise suppression on export enabled" : "Noise suppression on export disabled",
                             Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        final SeekBar noiseThresholdSlider = (SeekBar) root.findViewById(R.id.export_noise_threshold_slider);
+        final TextView noiseThresholdValue = (TextView) root.findViewById(R.id.export_noise_threshold_value);
+        if (noiseThresholdSlider != null && noiseThresholdValue != null) {
+            int threshold = prefs.getInt(SaidIt.EXPORT_NOISE_THRESHOLD_KEY, 500);
+            noiseThresholdSlider.setProgress(threshold);
+            noiseThresholdValue.setText(String.valueOf(threshold));
+
+            noiseThresholdSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    noiseThresholdValue.setText(String.valueOf(progress));
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) { }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    int threshold = seekBar.getProgress();
+                    prefs.edit().putInt(SaidIt.EXPORT_NOISE_THRESHOLD_KEY, threshold).apply();
+                    Toast.makeText(SettingsActivity.this,
+                        "Noise suppression threshold set to " + threshold,
+                        Toast.LENGTH_SHORT).show();
                 }
             });
         }

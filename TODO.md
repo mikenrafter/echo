@@ -12,10 +12,19 @@ This document tracks the detailed implementation tasks for enhancing Echo with a
 
 ### 🚧 Partially Completed
 - **Phase 6: Audio Activity Detection** - Infrastructure ready, integration incomplete
+- **Main UI Enhancements**
+  - [x] Replace preset duration buttons with single CLIP RECORDING
+  - [x] Add range help text
+  - [x] Add live volume meter (service + UI wiring)
+  - [x] Add counters for skipped silent seconds and groups
+  - [ ] Silence log activity (initial version added; refine pruning/UX)
 
 ### ⏳ Not Started
 - **Phase 4: Multi-Quality Encoding** - Planned but not implemented
 - **Phase 5: Dual-Channel Audio Capture** - Planned but high complexity due to Android limitations
+ - **Skipped Silence Details**
+   - [ ] Persist silence groups beyond memory window (optional)
+   - [ ] Add share/export for silence logs (optional)
 
 ---
 

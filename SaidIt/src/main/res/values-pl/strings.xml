@@ -47,12 +47,6 @@
 
     <string name="save_description">Aby zapisać zawartość pamięci do pliku, wybierz ile czasu chcesz zapisać:</string>
 
-    <string name="record_one_minute">1:00</string>
-    <string name="record_five_minutes">5:00</string>
-    <string name="record_all_memory">0:00</string>
-    <string name="record_30_minutes">30:00</string>
-    <string name="record_2_hrs">2 godz</string>
-    <string name="record_6_hrs">6 godz</string>
     <string name="default_price">9.90 zł</string>
 
     <string name="record_description">Aby po zapisaniu pamięci dowolnym z powyższych przycisków, kontynuować nagrywanie, przytrzymaj go dłużej.</string>

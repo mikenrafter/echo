@@ -23,6 +23,10 @@ public class AudioMemory {
     private int silenceSegmentCount = 3; // Number of consecutive silent segments before skipping
     private int consecutiveSilentSegments = 0; // Counter for consecutive silent segments
     private int totalSkippedSegments = 0; // Total number of segments skipped due to silence
+    private boolean insideSilentGroup = false; // Whether we are currently accumulating a silence group
+    private int currentGroupSegments = 0; // Segments in the current silence group
+    private int totalSkippedGroups = 0; // Total number of silence groups skipped
+    private final LinkedList<SilenceGroupEntry> silenceGroups = new LinkedList<>(); // Log of silence groups
 
     synchronized public void allocate(long sizeToEnsure) {
         long currentSize = getAllocatedMemorySize();
@@ -130,6 +134,12 @@ public class AudioMemory {
                         offset = 0;
                         // Don't add to filled list, reuse this buffer
                         totalSkippedSegments++; // Increment skipped counter
+                        // Start or continue a silence group
+                        if (!insideSilentGroup) {
+                            insideSilentGroup = true;
+                            currentGroupSegments = 0;
+                        }
+                        currentGroupSegments++;
                     } else {
                         // Not enough silent segments yet, advance normally
                         filled.addLast(current);
@@ -142,6 +152,17 @@ public class AudioMemory {
                     filled.addLast(current);
                     current = null;
                     offset = 0;
+                    // If we were in a silence group, close it now
+                    if (insideSilentGroup) {
+                        insideSilentGroup = false;
+                        totalSkippedGroups++;
+                        silenceGroups.addLast(new SilenceGroupEntry(currentGroupSegments, SystemClock.uptimeMillis()));
+                        // Prevent unbounded growth: cap list size
+                        if (silenceGroups.size() > 1000) {
+                            silenceGroups.removeFirst();
+                        }
+                        currentGroupSegments = 0;
+                    }
                 }
             } else {
                 offset += read;
@@ -194,6 +215,23 @@ public class AudioMemory {
             return false;
         }
         return AudioEffects.isSilent(chunk, silenceThreshold);
+    }
+
+    public static class SilenceGroupEntry {
+        public final int segments;
+        public final long endTimeMillis;
+        public SilenceGroupEntry(int segments, long endTimeMillis) {
+            this.segments = segments;
+            this.endTimeMillis = endTimeMillis;
+        }
+    }
+
+    public synchronized int getSkippedGroupsCount() {
+        return totalSkippedGroups;
+    }
+
+    public synchronized java.util.ArrayList<SilenceGroupEntry> getSilenceGroupsSnapshot() {
+        return new java.util.ArrayList<>(silenceGroups);
     }
 
 }
