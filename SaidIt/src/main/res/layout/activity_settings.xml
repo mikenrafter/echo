@@ -17,7 +17,18 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:navigationIcon="@drawable/ic_arrow_back"
-            app:title="@string/settings" />
+            app:title="@string/settings">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/save_button"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginEnd="8dp"
+                android:enabled="false"
+                android:text="@string/save" />
+        </com.google.android.material.appbar.MaterialToolbar>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -81,16 +92,8 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         app:selectionRequired="true"
-                        app:singleLine="true"
+                        app:singleLine="false"
                         app:singleSelection="true">
-
-                        <Button
-                            android:id="@+id/memory_low"
-                            style="?attr/materialButtonOutlinedStyle"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            tools:text="128 MB" />
 
                         <Button
                             android:id="@+id/memory_medium"
@@ -107,7 +110,45 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             tools:text="460 MB" />
+
+                        <Button
+                            android:id="@+id/memory_other"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/memory_other" />
                     </com.google.android.material.button.MaterialButtonToggleGroup>
+                    
+                    <!-- Custom Memory Size -->
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/custom_memory_section"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/custom_memory_size"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                    
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/custom_memory_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="8dp"
+                        android:textAppearance="?attr/textAppearanceBodyLarge"
+                        android:visibility="gone"
+                        tools:text="256 MB"/>
+                    
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/custom_memory_slider"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:valueFrom="32"
+                        android:valueTo="2048"
+                        android:stepSize="16"
+                        android:visibility="gone" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -168,6 +209,175 @@
                         android:valueFrom="10"
                         android:valueTo="720"
                         android:stepSize="10"/>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            
+            <!-- Filename Pattern Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/filename_pattern_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="16dp"
+                        android:text="@string/filename_pattern_description"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:hint="@string/filename_pattern_hint">
+                        
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/filename_pattern_input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="text"
+                            android:singleLine="true"/>
+                    </com.google.android.material.textfield.TextInputLayout>
+                    
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/filename_preview"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorPrimary"
+                        tools:text="Preview: Auto-save_2026-01-09_14-30-00.m4a"/>
+                    
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="@string/available_placeholders"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textStyle="bold" />
+                    
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/placeholders_list"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            
+            <!-- Auto-Cleanup Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/auto_cleanup_title"
+                            android:textAppearance="?attr/textAppearanceTitleMedium"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/auto_cleanup_switch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="16dp"
+                        android:text="@string/auto_cleanup_description"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    
+                    <!-- Auto-cleanup controls container -->
+                    <LinearLayout
+                        android:id="@+id/auto_cleanup_controls"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                    
+                        <!-- Max Files -->
+                        <com.google.android.material.textview.MaterialTextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/max_files_label"
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textStyle="bold" />
+                        
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/max_files_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal"
+                            android:layout_marginTop="4dp"
+                            android:textAppearance="?attr/textAppearanceBodyLarge"
+                            tools:text="50 files"/>
+                        
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/max_files_slider"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="16dp"
+                            android:valueFrom="10"
+                            android:valueTo="500"
+                            android:stepSize="10"/>
+                        
+                        <!-- Max Age -->
+                        <com.google.android.material.textview.MaterialTextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/max_age_label"
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textStyle="bold" />
+                        
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/max_age_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal"
+                            android:layout_marginTop="4dp"
+                            android:textAppearance="?attr/textAppearanceBodyLarge"
+                            tools:text="30 days"/>
+                        
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/max_age_slider"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:valueFrom="1"
+                            android:valueTo="365"
+                            android:stepSize="1"/>
+                    </LinearLayout>
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

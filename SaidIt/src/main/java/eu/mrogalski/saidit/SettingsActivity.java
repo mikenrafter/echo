@@ -9,6 +9,7 @@ import static eu.mrogalski.saidit.SaidIt.PACKAGE_NAME;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -18,9 +19,11 @@ import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.switchmaterial.SwitchMaterial;
+import com.google.android.material.textfield.TextInputEditText;
 
 import eu.mrogalski.StringFormat;
 import eu.mrogalski.android.TimeFormat;
+import eu.mrogalski.saidit.util.FilenamePatternGenerator;
 
 public class SettingsActivity extends AppCompatActivity {
 
@@ -28,42 +31,68 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView historyLimitTextView;
     private MaterialButtonToggleGroup memoryToggleGroup;
     private MaterialButtonToggleGroup qualityToggleGroup;
-    private Button memoryLowButton, memoryMediumButton, memoryHighButton;
+    private Button memoryMediumButton, memoryHighButton, memoryOtherButton;
     private Button quality8kHzButton, quality16kHzButton, quality48kHzButton;
     private SwitchMaterial autoSaveSwitch;
     private SwitchMaterial noiseSuppressorSwitch;
     private SwitchMaterial automaticGainControlSwitch;
+    private SwitchMaterial autoCleanupSwitch;
     private Slider autoSaveDurationSlider;
     private TextView autoSaveDurationLabel;
+    private Slider customMemorySlider;
+    private TextView customMemoryLabel;
+    private TextView customMemorySectionLabel;
+    private TextInputEditText filenamePatternInput;
+    private TextView filenamePreview;
+    private Slider maxFilesSlider;
+    private TextView maxFilesLabel;
+    private Slider maxAgeSlider;
+    private TextView maxAgeLabel;
+    private android.view.View autoCleanupControls;
+    private com.google.android.material.button.MaterialButton saveButton;
 
     private SharedPreferences sharedPreferences;
+    
+    // Track all pending changes
+    private boolean hasPendingChanges = false;
+    private long pendingMemorySize = 0;
+    private boolean pendingMemorySizeSet = false;
+    private int pendingSampleRate = 0;
+    private boolean pendingSampleRateSet = false;
+    private Boolean pendingAutoSaveEnabled = null;
+    private Integer pendingAutoSaveDuration = null;
+    private Boolean pendingNoiseSuppressor = null;
+    private Boolean pendingAGC = null;
+    private Boolean pendingAutoCleanupEnabled = null;
+    private Integer pendingMaxFiles = null;
+    private Integer pendingMaxAge = null;
+    private String pendingFilenamePattern = null;
 
     private boolean isBound = false;
 
     private final MaterialButtonToggleGroup.OnButtonCheckedListener memoryToggleListener = (group, checkedId, isChecked) -> {
         if (isChecked && isBound) {
-            final long maxMemory = Runtime.getRuntime().maxMemory();
-            long memorySize = maxMemory / 4; // Default to low
-            if (checkedId == R.id.memory_medium) {
-                memorySize = maxMemory / 2;
-            } else if (checkedId == R.id.memory_high) {
-                memorySize = (long) (maxMemory * 0.90);
-            }
-            
-            final long targetMemorySize = memorySize;
-            
-            // Check if service is listening - if so, this will clear the buffer
-            if (service.getState() != SaidItService.ServiceState.READY) {
-                showClearBufferDialog(() -> {
-                    service.setMemorySize(targetMemorySize);
-                    updateHistoryLimit();
-                }, () -> {
-                    // Revert to previous selection
-                    syncUI();
-                });
+            if (checkedId == R.id.memory_other) {
+                // Show custom memory section
+                customMemorySectionLabel.setVisibility(android.view.View.VISIBLE);
+                customMemoryLabel.setVisibility(android.view.View.VISIBLE);
+                customMemorySlider.setVisibility(android.view.View.VISIBLE);
             } else {
-                service.setMemorySize(targetMemorySize);
-                updateHistoryLimit();
+                // Hide custom memory section and track the change
+                customMemorySectionLabel.setVisibility(android.view.View.GONE);
+                customMemoryLabel.setVisibility(android.view.View.GONE);
+                customMemorySlider.setVisibility(android.view.View.GONE);
+                
+                final long maxMemory = Runtime.getRuntime().maxMemory();
+                long memorySize = maxMemory / 2; // Default to medium
+                if (checkedId == R.id.memory_high) {
+                    memorySize = (long) (maxMemory * 0.90);
+                }
+                
+                // Track the pending change
+                pendingMemorySize = memorySize;
+                pendingMemorySizeSet = true;
+                markPendingChange();
             }
         }
     };
@@ -77,21 +106,10 @@ public class SettingsActivity extends AppCompatActivity {
                 sampleRate = 48000;
             }
             
-            final int targetSampleRate = sampleRate;
-            
-            // Check if service is listening - if so, this will clear the buffer
-            if (service.getState() != SaidItService.ServiceState.READY) {
-                showClearBufferDialog(() -> {
-                    service.setSampleRate(targetSampleRate);
-                    updateHistoryLimit();
-                }, () -> {
-                    // Revert to previous selection
-                    syncUI();
-                });
-            } else {
-                service.setSampleRate(targetSampleRate);
-                updateHistoryLimit();
-            }
+            // Track the pending change
+            pendingSampleRate = sampleRate;
+            pendingSampleRateSet = true;
+            markPendingChange();
         }
     };
 
@@ -118,12 +136,13 @@ public class SettingsActivity extends AppCompatActivity {
 
         // Initialize UI components
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        saveButton = toolbar.findViewById(R.id.save_button);
         historyLimitTextView = findViewById(R.id.history_limit);
         memoryToggleGroup = findViewById(R.id.memory_toggle_group);
         qualityToggleGroup = findViewById(R.id.quality_toggle_group);
-        memoryLowButton = findViewById(R.id.memory_low);
         memoryMediumButton = findViewById(R.id.memory_medium);
         memoryHighButton = findViewById(R.id.memory_high);
+        memoryOtherButton = findViewById(R.id.memory_other);
         quality8kHzButton = findViewById(R.id.quality_8kHz);
         quality16kHzButton = findViewById(R.id.quality_16kHz);
         quality48kHzButton = findViewById(R.id.quality_48kHz);
@@ -132,6 +151,17 @@ public class SettingsActivity extends AppCompatActivity {
         automaticGainControlSwitch = findViewById(R.id.automatic_gain_control_switch);
         autoSaveDurationSlider = findViewById(R.id.auto_save_duration_slider);
         autoSaveDurationLabel = findViewById(R.id.auto_save_duration_label);
+        customMemorySectionLabel = findViewById(R.id.custom_memory_section);
+        customMemorySlider = findViewById(R.id.custom_memory_slider);
+        customMemoryLabel = findViewById(R.id.custom_memory_label);
+        filenamePatternInput = findViewById(R.id.filename_pattern_input);
+        filenamePreview = findViewById(R.id.filename_preview);
+        autoCleanupSwitch = findViewById(R.id.auto_cleanup_switch);
+        autoCleanupControls = findViewById(R.id.auto_cleanup_controls);
+        maxFilesSlider = findViewById(R.id.max_files_slider);
+        maxFilesLabel = findViewById(R.id.max_files_label);
+        maxAgeSlider = findViewById(R.id.max_age_slider);
+        maxAgeLabel = findViewById(R.id.max_age_label);
         Button howToButton = findViewById(R.id.how_to_button);
         Button showTourButton = findViewById(R.id.show_tour_button);
 
@@ -140,6 +170,9 @@ public class SettingsActivity extends AppCompatActivity {
 
         // Setup Toolbar
         toolbar.setNavigationOnClickListener(v -> finish());
+        
+        // Setup Save Button
+        saveButton.setOnClickListener(v -> applyPendingChanges());
 
         // Setup How-To Button
         howToButton.setOnClickListener(v -> startActivity(new Intent(this, HowToActivity.class)));
@@ -153,41 +186,89 @@ public class SettingsActivity extends AppCompatActivity {
         qualityToggleGroup.addOnButtonCheckedListener(qualityToggleListener);
 
         noiseSuppressorSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sharedPreferences.edit().putBoolean("noise_suppressor_enabled", isChecked).apply();
-            if (isBound) {
-                service.setSampleRate(service.getSamplingRate());
-            }
+            pendingNoiseSuppressor = isChecked;
+            markPendingChange();
         });
 
         automaticGainControlSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sharedPreferences.edit().putBoolean("automatic_gain_control_enabled", isChecked).apply();
-            if (isBound) {
-                service.setSampleRate(service.getSamplingRate());
-            }
+            pendingAGC = isChecked;
+            markPendingChange();
         });
 
         autoSaveSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sharedPreferences.edit().putBoolean("auto_save_enabled", isChecked).apply();
+            pendingAutoSaveEnabled = isChecked;
             autoSaveDurationSlider.setEnabled(isChecked);
             autoSaveDurationLabel.setEnabled(isChecked);
-            if (isBound && service != null) {
-                if (isChecked) {
-                    service.scheduleAutoSave();
-                } else {
-                    service.cancelAutoSave();
-                }
-            }
+            markPendingChange();
         });
 
         autoSaveDurationSlider.addOnChangeListener((slider, value, fromUser) -> {
             int minutes = (int) value;
             updateAutoSaveLabel(minutes);
             if (fromUser) {
-                sharedPreferences.edit().putInt("auto_save_duration", minutes * 60).apply();
-                // Re-schedule auto-save with new duration
-                if (isBound && service != null) {
-                    service.scheduleAutoSave();
-                }
+                pendingAutoSaveDuration = minutes * 60;
+                markPendingChange();
+            }
+        });
+        
+        // Custom memory size listener
+        customMemorySlider.addOnChangeListener((slider, value, fromUser) -> {
+            int megabytes = (int) value;
+            customMemoryLabel.setText(megabytes + " MB");
+            if (fromUser && isBound) {
+                long bytes = megabytes * 1024L * 1024L;
+                pendingMemorySize = bytes;
+                pendingMemorySizeSet = true;
+                markPendingChange();
+            }
+        });
+        
+        // Filename pattern listener
+        filenamePatternInput.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String pattern = s.toString();
+                pendingFilenamePattern = pattern;
+                updateFilenamePreview(pattern);
+                markPendingChange();
+            }
+            
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+        
+        // Auto-cleanup listener
+        autoCleanupSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sharedPreferences.edit().putBoolean("auto_cleanup_enabled", isChecked).apply();
+            autoCleanupControls.setEnabled(isChecked);
+            maxFilesSlider.setEnabled(isChecked);
+            maxFilesLabel.setEnabled(isChecked);
+            maxAgeSlider.setEnabled(isChecked);
+            maxAgeLabel.setEnabled(isChecked);
+            // Disable all children of the controls container
+            setViewGroupEnabled(autoCleanupControls, isChecked);
+        });
+        
+        // Max files listener
+        maxFilesSlider.addOnChangeListener((slider, value, fromUser) -> {
+            int files = (int) value;
+            maxFilesLabel.setText(getString(R.string.files_format, files));
+            if (fromUser) {
+                pendingMaxFiles = files;
+                markPendingChange();
+            }
+        });
+        
+        // Max age listener
+        maxAgeSlider.addOnChangeListener((slider, value, fromUser) -> {
+            int days = (int) value;
+            maxAgeLabel.setText(getString(R.string.days_format, days));
+            if (fromUser) {
+                pendingMaxAge = days;
+                markPendingChange();
             }
         });
     }
@@ -217,18 +298,52 @@ public class SettingsActivity extends AppCompatActivity {
 
         // Set memory button text
         final long maxMemory = Runtime.getRuntime().maxMemory();
-        memoryLowButton.setText(StringFormat.shortFileSize(maxMemory / 4));
         memoryMediumButton.setText(StringFormat.shortFileSize(maxMemory / 2));
         memoryHighButton.setText(StringFormat.shortFileSize((long) (maxMemory * 0.90)));
+        
+        // Always set slider max to high preset + 64MB
+        long highPresetBytes = (long) (maxMemory * 0.90);
+        int highPresetMB = (int) (highPresetBytes / 1024 / 1024);
+        int maxSliderMB = highPresetMB + 64;
+        
+        // Check if OOM walkback set a custom limit and use the higher value
+        long customMaxMemory = sharedPreferences.getLong(SaidIt.MAX_MEMORY_SIZE_KEY, 0);
+        if (customMaxMemory > 0) {
+            int customMaxMB = (int) (customMaxMemory / 1024 / 1024);
+            maxSliderMB = Math.max(maxSliderMB, customMaxMB);
+        }
+        
+        // Round to valid step size: valueTo must be valueFrom + (n * stepSize)
+        // Slider has valueFrom=32, stepSize=16
+        int valueFrom = 32;
+        int stepSize = 16;
+        int stepsNeeded = (maxSliderMB - valueFrom + stepSize - 1) / stepSize; // Round up
+        int validValueTo = valueFrom + (stepsNeeded * stepSize);
+        
+        customMemorySlider.setValueTo(validValueTo);
+        Log.d("SettingsActivity", "Set slider max to " + validValueTo + " MB (high preset + 64)");
 
         // Set memory button state
         long currentMemory = service.getMemorySize();
-        if (currentMemory <= maxMemory / 4) {
-            memoryToggleGroup.check(R.id.memory_low);
-        } else if (currentMemory <= maxMemory / 2) {
+        if (currentMemory <= maxMemory / 2) {
             memoryToggleGroup.check(R.id.memory_medium);
-        } else {
+            customMemorySectionLabel.setVisibility(android.view.View.GONE);
+            customMemoryLabel.setVisibility(android.view.View.GONE);
+            customMemorySlider.setVisibility(android.view.View.GONE);
+        } else if (currentMemory <= (long) (maxMemory * 0.92)) {
             memoryToggleGroup.check(R.id.memory_high);
+            customMemorySectionLabel.setVisibility(android.view.View.GONE);
+            customMemoryLabel.setVisibility(android.view.View.GONE);
+            customMemorySlider.setVisibility(android.view.View.GONE);
+        } else {
+            // Custom size
+            memoryToggleGroup.check(R.id.memory_other);
+            customMemorySectionLabel.setVisibility(android.view.View.VISIBLE);
+            customMemoryLabel.setVisibility(android.view.View.VISIBLE);
+            customMemorySlider.setVisibility(android.view.View.VISIBLE);
+            int megabytes = (int) (currentMemory / 1024 / 1024);
+            customMemorySlider.setValue(megabytes);
+            customMemoryLabel.setText(megabytes + " MB");
         }
 
         // Set quality button state
@@ -263,6 +378,27 @@ public class SettingsActivity extends AppCompatActivity {
 
         boolean automaticGainControlEnabled = sharedPreferences.getBoolean("automatic_gain_control_enabled", false);
         automaticGainControlSwitch.setChecked(automaticGainControlEnabled);
+        
+        // Load and apply auto-cleanup settings
+        boolean autoCleanupEnabled = sharedPreferences.getBoolean("auto_cleanup_enabled", false);
+        autoCleanupSwitch.setChecked(autoCleanupEnabled);
+        setViewGroupEnabled(autoCleanupControls, autoCleanupEnabled);
+        
+        int maxFiles = sharedPreferences.getInt("auto_cleanup_max_files", 50);
+        maxFilesSlider.setValue(maxFiles);
+        maxFilesLabel.setText(getString(R.string.files_format, maxFiles));
+        
+        int maxAge = sharedPreferences.getInt("auto_cleanup_max_age_days", 30);
+        maxAgeSlider.setValue(maxAge);
+        maxAgeLabel.setText(getString(R.string.days_format, maxAge));
+        
+        // Load filename pattern
+        String filenamePattern = sharedPreferences.getString("filename_pattern", "{date}_{time}");
+        filenamePatternInput.setText(filenamePattern);
+        updateFilenamePreview(filenamePattern);
+        
+        // Reset pending changes
+        resetPendingChanges();
     }
 
     private void updateHistoryLimit() {
@@ -290,6 +426,11 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
     
+    private void updateFilenamePreview(String pattern) {
+        String preview = "Preview: " + FilenamePatternGenerator.generatePreview(pattern);
+        filenamePreview.setText(preview);
+    }
+    
     private void showClearBufferDialog(Runnable onConfirm, Runnable onCancel) {
         new androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle(R.string.clear_buffer_warning_title)
@@ -302,5 +443,126 @@ public class SettingsActivity extends AppCompatActivity {
             })
             .setCancelable(false)
             .show();
+    }
+    
+    private void updateSaveButtonState() {
+        saveButton.setEnabled(hasPendingChanges);
+    }
+    
+    private void markPendingChange() {
+        hasPendingChanges = true;
+        updateSaveButtonState();
+    }
+    
+    private void applyPendingChanges() {
+        if (!hasPendingChanges || !isBound || service == null) return;
+        
+        // Check if memory is changing and service is listening
+        boolean memoryChanging = pendingMemorySizeSet;
+        boolean serviceListening = (service.getState() != SaidItService.ServiceState.READY);
+        
+        if (memoryChanging && serviceListening) {
+            // Show confirmation dialog only when memory changes and service is listening
+            showClearBufferDialog(this::performApplyPendingChanges, () -> {
+                // Revert to previous selection on cancel
+                syncUI();
+                resetPendingChanges();
+            });
+        } else {
+            // Apply immediately if no buffer clearing needed
+            performApplyPendingChanges();
+        }
+    }
+    
+    private void performApplyPendingChanges() {
+        if (!isBound || service == null) return;
+        
+        // Apply memory changes
+        if (pendingMemorySizeSet) {
+            service.setMemorySize(pendingMemorySize);
+            updateHistoryLimit();
+        }
+        
+        // Apply sample rate changes
+        if (pendingSampleRateSet) {
+            service.setSampleRate(pendingSampleRate);
+        }
+        
+        // Apply auto-save changes
+        if (pendingAutoSaveEnabled != null) {
+            sharedPreferences.edit().putBoolean("auto_save_enabled", pendingAutoSaveEnabled).apply();
+            if (pendingAutoSaveEnabled) {
+                service.scheduleAutoSave();
+            } else {
+                service.cancelAutoSave();
+            }
+        }
+        
+        if (pendingAutoSaveDuration != null) {
+            sharedPreferences.edit().putInt("auto_save_duration", pendingAutoSaveDuration).apply();
+            if (isBound && service != null && sharedPreferences.getBoolean("auto_save_enabled", false)) {
+                service.scheduleAutoSave();
+            }
+        }
+        
+        // Apply noise suppressor
+        if (pendingNoiseSuppressor != null) {
+            sharedPreferences.edit().putBoolean("noise_suppressor_enabled", pendingNoiseSuppressor).apply();
+            service.setSampleRate(service.getSamplingRate());
+        }
+        
+        // Apply AGC
+        if (pendingAGC != null) {
+            sharedPreferences.edit().putBoolean("automatic_gain_control_enabled", pendingAGC).apply();
+            service.setSampleRate(service.getSamplingRate());
+        }
+        
+        // Apply filename pattern
+        if (pendingFilenamePattern != null) {
+            sharedPreferences.edit().putString("filename_pattern", pendingFilenamePattern).apply();
+        }
+        
+        // Apply auto-cleanup settings
+        if (pendingAutoCleanupEnabled != null) {
+            sharedPreferences.edit().putBoolean("auto_cleanup_enabled", pendingAutoCleanupEnabled).apply();
+        }
+        
+        if (pendingMaxFiles != null) {
+            sharedPreferences.edit().putInt("auto_cleanup_max_files", pendingMaxFiles).apply();
+        }
+        
+        if (pendingMaxAge != null) {
+            sharedPreferences.edit().putInt("auto_cleanup_max_age_days", pendingMaxAge).apply();
+        }
+        
+        resetPendingChanges();
+    }
+    
+    private void resetPendingChanges() {
+        hasPendingChanges = false;
+        pendingMemorySizeSet = false;
+        pendingSampleRateSet = false;
+        pendingAutoSaveEnabled = null;
+        pendingAutoSaveDuration = null;
+        pendingNoiseSuppressor = null;
+        pendingAGC = null;
+        pendingAutoCleanupEnabled = null;
+        pendingMaxFiles = null;
+        pendingMaxAge = null;
+        pendingFilenamePattern = null;
+        updateSaveButtonState();
+    }
+    
+    private void setViewGroupEnabled(android.view.View view, boolean enabled) {
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = group.getChildAt(i);
+                child.setEnabled(enabled);
+                setViewGroupEnabled(child, enabled);
+            }
+        } else {
+            view.setEnabled(enabled);
+        }
     }
 }

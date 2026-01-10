@@ -44,8 +44,11 @@ public class SimpleRecordingStoreManager implements RecordingStoreManager {
             musicDir = new File(context.getFilesDir(), "Music");
         }
         this.storageDir = new File(musicDir, SEGMENTS_SUBDIR);
+        Log.d(TAG, "Init storageDir=" + storageDir.getAbsolutePath());
         if (!storageDir.exists() && !storageDir.mkdirs()) {
             Log.e(TAG, "Failed to create storage directory.");
+        } else {
+            Log.d(TAG, "Storage directory ready. exists=" + storageDir.exists() + ", isDir=" + storageDir.isDirectory());
         }
     }
 
@@ -116,24 +119,37 @@ public class SimpleRecordingStoreManager implements RecordingStoreManager {
     }
     @Override
     public File export(float durationSeconds, String fileName) throws IOException {
+        Log.d(TAG, "Export requested. durationSeconds=" + durationSeconds + ", fileName=" + fileName);
+        Log.d(TAG, "Using storageDir=" + storageDir.getAbsolutePath() + ", exists=" + storageDir.exists() + ", isDir=" + storageDir.isDirectory());
+
         File[] files = storageDir.listFiles((dir, name) -> name.endsWith(".wav"));
+        Log.d(TAG, "Segment files found=" + (files == null ? "null" : files.length));
         if (files == null || files.length == 0) {
+            Log.w(TAG, "No .wav segment files available. Returning null from export.");
             return null;
         }
         Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
+        // Log top few files for visibility
+        for (int i = 0; i < Math.min(files.length, 5); i++) {
+            Log.d(TAG, "file[" + i + "]=" + files[i].getName() + " size=" + files[i].length());
+        }
 
         File exportFile = new File(context.getCacheDir(), fileName + ".wav");
+        Log.d(TAG, "Creating export file at=" + exportFile.getAbsolutePath());
         WavFileWriter writer = new WavFileWriter(WavAudioFormat.wavFormat(sampleRate, 16, 1), exportFile);
 
         long bytesToExport = (long) (durationSeconds * sampleRate * 2);
+        Log.d(TAG, "bytesToExport=" + bytesToExport + " (sampleRate=" + sampleRate + ")");
         long bytesExported = 0;
 
         for (File file : files) {
             if (bytesExported >= bytesToExport) {
+                Log.d(TAG, "Target bytes reached. Stopping iteration.");
                 break;
             }
             long fileBytes = file.length() - 44; // Exclude WAV header
             long bytesToWrite = Math.min(bytesToExport - bytesExported, fileBytes);
+            Log.d(TAG, "Processing file=" + file.getName() + ", fileBytesNoHeader=" + fileBytes + ", plannedToWrite=" + bytesToWrite);
 
             try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
                 fis.skip(44); // Skip WAV header
@@ -145,10 +161,12 @@ public class SimpleRecordingStoreManager implements RecordingStoreManager {
                     bytesToWrite -= toWrite;
                     bytesExported += toWrite;
                 }
+                Log.d(TAG, "Finished file=" + file.getName() + ", bytesExportedSoFar=" + bytesExported);
             }
         }
 
         writer.close();
+        Log.d(TAG, "Export complete. bytesExported=" + bytesExported + ", exportFileSize=" + exportFile.length());
         return exportFile;
     }
 

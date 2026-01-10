@@ -33,25 +33,70 @@ public class RecordingExporter {
     public void export(RecordingStoreManager recordingStoreManager, float memorySeconds, String format, String newFileName, SaidItService.WavFileReceiver wavFileReceiver) {
         File exportFile = null;
         File aacFile = null;
+
+        // Validate required parameters early and loudly to surface issues.
+        if (recordingStoreManager == null) {
+            String errorMsg = "Recording storage manager is not available. Please try again.";
+            IllegalStateException ex = new IllegalStateException(errorMsg);
+            Log.e(TAG, errorMsg, ex);
+            showToast(errorMsg);
+            if (wavFileReceiver != null) {
+                wavFileReceiver.onFailure(ex);
+            }
+            throw ex;
+        }
+
+        if (memorySeconds <= 0) {
+            String errorMsg = "Invalid memory size for export.";
+            IllegalArgumentException ex = new IllegalArgumentException(errorMsg);
+            Log.e(TAG, errorMsg, ex);
+            showToast(errorMsg);
+            if (wavFileReceiver != null) {
+                wavFileReceiver.onFailure(ex);
+            }
+            throw ex;
+        }
+
+        String fileName = newFileName != null ? newFileName.replaceAll("[^a-zA-Z0-9.-]", "_") : "SaidIt_export";
+
         try {
-            String fileName = newFileName != null ? newFileName.replaceAll("[^a-zA-Z0-9.-]", "_") : "SaidIt_export";
             exportFile = recordingStoreManager.export(memorySeconds, fileName);
 
-            if (exportFile != null && wavFileReceiver != null) {
+            if (exportFile == null) {
+                String errorMsg = "Failed to export recording to file. Storage may be unavailable.";
+                IOException ex = new IOException(errorMsg);
+                Log.e(TAG, errorMsg, ex);
+                showToast(errorMsg);
+                if (wavFileReceiver != null) {
+                    wavFileReceiver.onFailure(ex);
+                }
+                throw new RuntimeException(ex);
+            }
+
+            if (wavFileReceiver != null) {
                 if ("aac".equals(format)) {
-                    aacFile = new File(mContext.getCacheDir(), fileName + ".m4a");
-                    AacExporter.export(exportFile, aacFile, mSampleRate, 1, 96000);
-                    saveFileToMediaStore(aacFile, (newFileName != null ? newFileName : "SaidIt Recording") + ".m4a", "audio/mp4", wavFileReceiver);
+                    try {
+                        aacFile = new File(mContext.getCacheDir(), fileName + ".m4a");
+                        AacExporter.export(exportFile, aacFile, mSampleRate, 1, 96000);
+                        saveFileToMediaStore(aacFile, (newFileName != null ? newFileName : "SaidIt Recording") + ".m4a", "audio/mp4", wavFileReceiver);
+                    } catch (Exception e) {
+                        Log.e(TAG, "ERROR converting to AAC format", e);
+                        showToast(mContext.getString(R.string.error_saving_recording) + " (AAC conversion failed)");
+                        if (wavFileReceiver != null) {
+                            wavFileReceiver.onFailure(e);
+                        }
+                        throw new RuntimeException(e);
+                    }
                 } else {
                     saveFileToMediaStore(exportFile, (newFileName != null ? newFileName : "SaidIt Recording") + ".wav", "audio/wav", wavFileReceiver);
                 }
             }
         } catch (IOException e) {
-            Log.e(TAG, "ERROR exporting file", e);
-            showToast(mContext.getString(R.string.error_saving_recording));
+            Log.e(TAG, "export failed", e);
             if (wavFileReceiver != null) {
                 wavFileReceiver.onFailure(e);
             }
+            throw new RuntimeException(e);
         } finally {
             if (exportFile != null && !exportFile.delete()) {
                 Log.w(TAG, "Could not delete export file: " + exportFile.getAbsolutePath());

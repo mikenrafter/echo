@@ -49,6 +49,9 @@ import static eu.mrogalski.saidit.SaidIt.AUDIO_MEMORY_ENABLED_KEY;
 import static eu.mrogalski.saidit.SaidIt.AUDIO_MEMORY_SIZE_KEY;
 import static eu.mrogalski.saidit.SaidIt.PACKAGE_NAME;
 import static eu.mrogalski.saidit.SaidIt.SAMPLE_RATE_KEY;
+import static eu.mrogalski.saidit.SaidIt.MEMORY_SIZE_VERIFIED_KEY;
+import static eu.mrogalski.saidit.SaidIt.MAX_MEMORY_SIZE_KEY;
+import static eu.mrogalski.saidit.SaidIt.MEMORY_REDUCTION_STEP_MB;
 
 public class SaidItService extends Service {
     static final String TAG = SaidItService.class.getSimpleName();
@@ -290,7 +293,20 @@ public class SaidItService extends Service {
 
         Log.d(TAG, "Queueing: START LISTENING");
         startService(new Intent(this, this.getClass()));
-        final long memorySize = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+        
+        final SharedPreferences preferences = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        long memorySize = preferences.getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+        
+        // Check if memory size was previously verified
+        final boolean memoryVerified = preferences.getBoolean(MEMORY_SIZE_VERIFIED_KEY, false);
+        
+        // If not verified, try to reduce by 10MB and retry next boot
+        if (!memoryVerified) {
+            memorySize = reduceMemorySizeForRetry(memorySize);
+        }
+        
+        final long finalMemorySize = memorySize;
+        final SharedPreferences finalPreferences = preferences;
 
         audioHandler.post(() -> {
             if (isShuttingDown) return;
@@ -311,23 +327,41 @@ public class SaidItService extends Service {
             }
             audioRecord = newAudioRecord;
             
-            final SharedPreferences preferences = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
             if (NoiseSuppressor.isAvailable()) {
                 noiseSuppressor = NoiseSuppressor.create(audioRecord.getAudioSessionId());
                 if (noiseSuppressor != null) {
-                    noiseSuppressor.setEnabled(preferences.getBoolean("noise_suppressor_enabled", false));
+                    noiseSuppressor.setEnabled(finalPreferences.getBoolean("noise_suppressor_enabled", false));
                     Log.d(TAG, "NoiseSuppressor enabled: " + noiseSuppressor.getEnabled());
                 }
             }
             if (AutomaticGainControl.isAvailable()) {
                 automaticGainControl = AutomaticGainControl.create(audioRecord.getAudioSessionId());
                 if (automaticGainControl != null) {
-                    automaticGainControl.setEnabled(preferences.getBoolean("automatic_gain_control_enabled", false));
+                    automaticGainControl.setEnabled(finalPreferences.getBoolean("automatic_gain_control_enabled", false));
                     Log.d(TAG, "AutomaticGainControl enabled: " + automaticGainControl.getEnabled());
                 }
             }
 
-            audioMemory.allocate(memorySize);
+            // Attempt memory allocation and handle OOM
+            if (audioMemory.allocate(finalMemorySize)) {
+                // Allocation succeeded - mark memory size as verified
+                finalPreferences.edit()
+                    .putBoolean(MEMORY_SIZE_VERIFIED_KEY, true)
+                    .putLong(AUDIO_MEMORY_SIZE_KEY, finalMemorySize)
+                    .apply();
+                Log.d(TAG, "Memory allocation verified: " + (finalMemorySize / (1024 * 1024)) + " MB");
+            } else {
+                // Allocation failed - unset verification flag for next boot
+                finalPreferences.edit()
+                    .putBoolean(MEMORY_SIZE_VERIFIED_KEY, false)
+                    .apply();
+                Log.e(TAG, "Memory allocation failed for " + (finalMemorySize / (1024 * 1024)) + " MB. Will retry with reduced size on next boot.");
+                showToast("Failed to allocate " + (finalMemorySize / (1024 * 1024)) + " MB. App will try with less memory on next launch.");
+                audioRecord.release();
+                audioRecord = null;
+                state = ServiceState.READY;
+                return;
+            }
             // Set up event-driven periodic callbacks (~50ms)
             final int periodFrames = Math.max(128, SAMPLE_RATE / 20);
             positionListener = new AudioRecord.OnRecordPositionUpdateListener() {
@@ -478,9 +512,23 @@ public class SaidItService extends Service {
     }
 
         public void exportRecording(final float memorySeconds, final String format, final WavFileReceiver wavFileReceiver, String newFileName) {
-        if (state == ServiceState.READY) return;
+        if (state == ServiceState.READY) {
+            Log.w(TAG, "exportRecording called while service READY; ignoring");
+            return;
+        }
 
-        analysisHandler.post(() -> recordingExporter.export(recordingStoreManager, memorySeconds, format, newFileName, wavFileReceiver));
+        if (recordingExporter == null) {
+            Log.e(TAG, "Recording exporter not initialized");
+            if (wavFileReceiver != null) {
+                wavFileReceiver.onFailure(new IllegalStateException("Recording exporter not available"));
+            }
+            return;
+        }
+
+        final RecordingStoreManager currentStore = recordingStoreManager;
+        Log.d(TAG, "exportRecording request: memorySeconds=" + memorySeconds + ", format=" + format + ", storeNull=" + (currentStore == null));
+
+        analysisHandler.post(() -> recordingExporter.export(currentStore, memorySeconds, format, newFileName, wavFileReceiver));
     }
 
     private void flushAudioRecord() {
@@ -563,9 +611,8 @@ public class SaidItService extends Service {
         }
         
         int durationSeconds = prefs.getInt("auto_save_duration", 600);
-        String timestamp = new java.text.SimpleDateFormat("yyyy-MM-DD_HH-mm-ss", java.util.Locale.US)
-            .format(new java.util.Date());
-        String fileName = "Auto-save_" + timestamp;
+        String pattern = prefs.getString("filename_pattern", "Auto-save_{date}_{time}");
+        String fileName = eu.mrogalski.saidit.util.FilenamePatternGenerator.generate(pattern, durationSeconds, true);
         
         Log.d(TAG, "Executing auto-save: " + fileName + " (" + durationSeconds + "s)");
         
@@ -585,13 +632,68 @@ public class SaidItService extends Service {
         return state;
     }
 
+    /**
+     * Reduces the requested memory size by MEMORY_REDUCTION_STEP_MB (10MB) for retry.
+     * If the reduced size would be below 32MB minimum, sets it to 32MB.
+     * Also updates max memory size to be 30MB more than the attempted size.
+     * @param currentSize The current memory size in bytes
+     * @return The reduced memory size in bytes
+     */
+    private long reduceMemorySizeForRetry(long currentSize) {
+        long reductionBytes = MEMORY_REDUCTION_STEP_MB * 1024 * 1024;
+        long reducedSize = currentSize - reductionBytes;
+        long minMemoryBytes = 32 * 1024 * 1024; // 32 MB minimum
+        
+        if (reducedSize < minMemoryBytes) {
+            Log.w(TAG, "Reduced memory size would be below minimum. Setting to 32 MB.");
+            reducedSize = minMemoryBytes;
+        }
+        
+        // Set max memory size to 30MB more than the attempted allocation
+        long maxMemorySize = currentSize + (30 * 1024 * 1024);
+        SharedPreferences preferences = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit().putLong(MAX_MEMORY_SIZE_KEY, maxMemorySize).apply();
+        
+        Log.d(TAG, "Reducing memory size from " + (currentSize / (1024 * 1024)) + " MB to " + (reducedSize / (1024 * 1024)) + " MB for retry.");
+        Log.d(TAG, "Setting max slider to " + (maxMemorySize / (1024 * 1024)) + " MB");
+        return reducedSize;
+    }
+
     public void setMemorySize(final long memorySize) {
         final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-        preferences.edit().putLong(AUDIO_MEMORY_SIZE_KEY, memorySize).apply();
+        // When user manually sets memory size, reset verification flag to re-verify
+        preferences.edit()
+            .putLong(AUDIO_MEMORY_SIZE_KEY, memorySize)
+            .putBoolean(MEMORY_SIZE_VERIFIED_KEY, false)
+            .apply();
 
         if(preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true)) {
-            audioHandler.post(() -> audioMemory.allocate(memorySize));
+            audioHandler.post(() -> {
+                if (audioMemory.allocate(memorySize)) {
+                    // Allocation succeeded - mark as verified
+                    preferences.edit()
+                        .putBoolean(MEMORY_SIZE_VERIFIED_KEY, true)
+                        .apply();
+                    Log.d(TAG, "Manual memory allocation verified: " + (memorySize / (1024 * 1024)) + " MB");
+                    broadcastMemoryAllocationSuccess();
+                } else {
+                    // Allocation failed - keep flag unset for retry on next boot
+                    Log.e(TAG, "Manual memory allocation failed for " + (memorySize / (1024 * 1024)) + " MB");
+                    broadcastMemoryAllocationFailure(memorySize);
+                }
+            });
         }
+    }
+
+    private void broadcastMemoryAllocationSuccess() {
+        Intent intent = new Intent("eu.mrogalski.saidit.MEMORY_ALLOCATION_SUCCESS");
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    }
+
+    private void broadcastMemoryAllocationFailure(long memorySize) {
+        Intent intent = new Intent("eu.mrogalski.saidit.MEMORY_ALLOCATION_FAILURE");
+        intent.putExtra("requested_memory_mb", memorySize / 1024 / 1024);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
     }
 
     public int getSamplingRate() {

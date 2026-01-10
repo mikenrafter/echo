@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.IntentFilter;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -19,6 +20,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -55,6 +57,24 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
     // State
     private boolean isRecording = false;
     private float memorizedDuration = 0;
+    private SaidItService boundService;
+    private boolean isBound = false;
+    private AlertDialog savingDialog;
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            SaidItService.BackgroundRecorderBinder binder = (SaidItService.BackgroundRecorderBinder) service;
+            boundService = binder.getService();
+            isBound = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isBound = false;
+            boundService = null;
+        }
+    };
 
 
     private final MaterialButtonToggleGroup.OnButtonCheckedListener listeningToggleListener = (group, checkedId, isChecked) -> {
@@ -125,19 +145,28 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
 
     @Override
     public void onSaveClip(String fileName, float durationInSeconds) {
-        AlertDialog progressDialog = new MaterialAlertDialogBuilder(requireActivity())
+        savingDialog = new MaterialAlertDialogBuilder(requireActivity())
                 .setTitle("Saving Recording")
                 .setMessage("Please wait...")
-                .setCancelable(false)
+                .setCancelable(true)
+                .setOnCancelListener(dialog -> {
+                    // Allow back button to dismiss the dialog
+                    dialog.dismiss();
+                })
                 .create();
-        progressDialog.show();
+        savingDialog.show();
 
-        Intent intent = new Intent(getActivity(), SaidItService.class);
-        intent.setAction(SaidItService.ACTION_EXPORT_RECORDING);
-        intent.putExtra(SaidItService.EXTRA_MEMORY_SECONDS, durationInSeconds);
-        intent.putExtra(SaidItService.EXTRA_FORMAT, "aac");
-        intent.putExtra(SaidItService.EXTRA_NEW_FILE_NAME, fileName);
-        getActivity().startService(intent);
+        if (isBound && boundService != null) {
+            boundService.exportRecording(durationInSeconds, "aac", new PromptFileReceiver(requireActivity(), savingDialog), fileName);
+        } else {
+            // Fallback to intent-based call (no callbacks available)
+            Intent intent = new Intent(getActivity(), SaidItService.class);
+            intent.setAction(SaidItService.ACTION_EXPORT_RECORDING);
+            intent.putExtra(SaidItService.EXTRA_MEMORY_SECONDS, durationInSeconds);
+            intent.putExtra(SaidItService.EXTRA_FORMAT, "aac");
+            intent.putExtra(SaidItService.EXTRA_NEW_FILE_NAME, fileName);
+            getActivity().startService(intent);
+        }
     }
 
 
@@ -178,6 +207,10 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
     @Override
     public void onStart() {
         super.onStart();
+        // Bind to service for direct callbacks
+        Intent bindIntent = new Intent(getActivity(), SaidItService.class);
+        getActivity().bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+
         broadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -200,9 +233,17 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
     @Override
     public void onStop() {
         super.onStop();
+        if (isBound) {
+            getActivity().unbindService(serviceConnection);
+            isBound = false;
+            boundService = null;
+        }
         LocalBroadcastManager.getInstance(getActivity()).unregisterReceiver(broadcastReceiver);
         if (getView() != null) {
             getView().removeCallbacks(updater);
+        }
+        if (savingDialog != null && savingDialog.isShowing()) {
+            savingDialog.dismiss();
         }
     }
 
@@ -323,6 +364,7 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
                     if (progressDialog != null && progressDialog.isShowing()) {
                         progressDialog.dismiss();
                     }
+                    Log.e("PromptFileReceiver", "Saving failed", e);
                     new MaterialAlertDialogBuilder(activity)
                             .setTitle(R.string.error_title)
                             .setMessage(R.string.error_saving_failed)

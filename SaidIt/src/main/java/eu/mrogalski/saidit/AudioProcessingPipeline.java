@@ -94,9 +94,21 @@ public class AudioProcessingPipeline {
                     }
                 }
             });
-            
-            audioClassifier = new AudioEventClassifier();
-            audioClassifier.load(context, "yamnet_tiny.tfile", "yamnet_tiny_labels.txt");
+
+            // The classifier is optional and currently disabled to avoid missing native lib crashes.
+            final boolean enableClassifier = false; // toggle on when native libs + assets are bundled
+            if (enableClassifier) {
+                try {
+                    audioClassifier = new AudioEventClassifier();
+                    audioClassifier.load(context, "yamnet_tiny.tfile", "yamnet_tiny_labels.txt");
+                } catch (Exception e) {
+                    Log.w(TAG, "Audio classifier unavailable; continuing without tagging", e);
+                    audioClassifier = null;
+                }
+            } else {
+                Log.i(TAG, "Audio classifier disabled (missing native libs/assets); skipping load.");
+                audioClassifier = null;
+            }
             
             isRunning.set(true);
         } catch (Exception e) {

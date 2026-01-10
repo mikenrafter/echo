@@ -120,8 +120,8 @@
 
     <string name="audio_memory_holds">Audio memory is limited at</string>
     <string name="audio_memory_change">You can change it by tweaking:</string>
-    <string name="option_a_used_ram">A) System memory in use</string>
-    <string name="option_b_audio_quality">B) Sound quality</string>
+    <string name="option_a_used_ram">System memory in use</string>
+    <string name="option_b_audio_quality">Sound quality</string>
     <string name="used_ram_description">Echo and other apps use system memory to keep their data. Large system memory consumption may slow other apps.</string>
     <string name="audio_quality_description">Higher quality settings will use more memory and battery.</string>
     <string name="audio_processing_title">Audio Processing</string>
@@ -197,4 +197,30 @@
     <string name="clear_buffer_warning_title">Clear Audio Buffer?</string>
     <string name="continue_action">Continue</string>
     <string name="cancel">Cancel</string>
+    <string name="apply">Apply</string>
+    
+    <!-- Custom Memory Size -->
+    <string name="custom_memory_size">Custom Memory Size</string>
+    <string name="memory_other">Other</string>
+    
+    <!-- Filename Pattern -->
+    <string name="filename_pattern_title">Filename Pattern</string>
+    <string name="filename_pattern_description">Customize how auto-saved files are named</string>
+    <string name="filename_pattern_hint">Enter pattern</string>
+    <string name="available_placeholders">Available placeholders:</string>
+    <string name="placeholders_list">{date} = {YYYY}-{MM}-{DD}\\n{time} = {HH}-{mm}-{ss}\\n{timestamp} = Unix time\\n{duration} = Clip duration\\n{counter} = Sequential number</string>
+    
+    <!-- Auto-Cleanup -->
+    <string name="auto_cleanup_title">Auto-Cleanup</string>
+    <string name="auto_cleanup_description">Automatically delete old auto-saved recordings</string>
+    <string name="max_files_label">Maximum number of files</string>
+    <string name="max_age_label">Maximum age (days)</string>
+    <string name="files_format">%d files</string>
+    <string name="days_format">%d days</string>
+    
+    <!-- Time Presets -->
+    <string name="time_presets">Quick Durations</string>
+    <string name="thirty_seconds">30 sec</string>
+    <string name="ten_minutes_short">10 min</string>
+    <string name="thirty_minutes_short">30 min</string>
 </resources>

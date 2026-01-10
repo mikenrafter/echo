@@ -79,10 +79,14 @@ public class SaveClipBottomSheet extends BottomSheetDialogFragment {
             int checkedChipId = durationChipGroup.getCheckedChipId();
             float durationInSeconds = 0;
 
-            if (checkedChipId == R.id.duration_1m) {
+            if (checkedChipId == R.id.duration_30s) {
+                durationInSeconds = 30;
+            } else if (checkedChipId == R.id.duration_1m) {
                 durationInSeconds = 60;
             } else if (checkedChipId == R.id.duration_5m) {
                 durationInSeconds = 300;
+            } else if (checkedChipId == R.id.duration_10m) {
+                durationInSeconds = 600;
             } else if (checkedChipId == R.id.duration_30m) {
                 durationInSeconds = 1800;
             } else if (checkedChipId == R.id.duration_all) {

@@ -33,12 +33,17 @@ public class AudioMemory {
         int consume(byte[] array, int offset, int count) throws IOException;
     }
     
-    public void allocate(long sizeToEnsure) {
+    /**
+     * Attempts to allocate the requested memory size.
+     * @param sizeToEnsure Target memory size in bytes
+     * @return true if allocation succeeded, false if OutOfMemoryError occurred
+     */
+    public boolean allocate(long sizeToEnsure) {
         rwLock.writeLock().lock();
         try {
             int required = 0;
             while (required < sizeToEnsure) required += CHUNK_SIZE;
-            if (required == capacity) return;
+            if (required == capacity) return true;
             
             // Clear old buffer first to help GC
             if (ring != null) {
@@ -52,6 +57,19 @@ public class AudioMemory {
             writePos = 0;
             size = 0;
             overwriting = false;
+            return true;
+        } catch (OutOfMemoryError e) {
+            // Clear buffers on OOM
+            if (ring != null) {
+                ring.clear();
+                ring = null;
+            }
+            capacity = 0;
+            writePos = 0;
+            size = 0;
+            overwriting = false;
+            System.gc();
+            return false;
         } finally {
             rwLock.writeLock().unlock();
         }
