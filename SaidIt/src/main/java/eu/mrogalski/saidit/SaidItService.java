@@ -637,17 +637,40 @@ public class SaidItService extends Service {
                 }
             }
             
-            // TODO: Integrate Voice Activity Detection
-            // Activity detection is initialized but not yet integrated into the audio processing loop.
-            // Future implementation should:
-            // 1. Process audio through VoiceActivityDetector when activityDetectionEnabled is true
-            // 2. Maintain a 5-minute pre-activity buffer
-            // 3. Start recording when activity detected
-            // 4. Continue for 5 minutes after activity ends
-            // 5. Save to disk and add to ActivityRecordingDatabase
-            // Example:
-            // if (activityDetectionEnabled && voiceActivityDetector != null && read > 0) {
-            //     boolean hasActivity = voiceActivityDetector.process(array, offset, read);
+            // Voice Activity Detection integration
+            if (activityDetectionEnabled && voiceActivityDetector != null && read > 0) {
+                boolean hasActivity = voiceActivityDetector.process(array, offset, read);
+                long currentTime = System.currentTimeMillis();
+                
+                if (hasActivity) {
+                    lastActivityTime = currentTime;
+                    
+                    // Start activity recording if not already recording
+                    if (!isRecordingActivity) {
+                        startActivityRecording();
+                    }
+                }
+                
+                // Write to activity recording if active
+                if (isRecordingActivity && activityWavFileWriter != null) {
+                    try {
+                        activityWavFileWriter.write(array, offset, read);
+                    } catch (IOException e) {
+                        Log.e(TAG, "Error writing to activity recording", e);
+                    }
+                }
+                
+                // Check if we should stop activity recording (post-activity buffer expired)
+                if (isRecordingActivity && !hasActivity) {
+                    final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+                    int postBufferSeconds = prefs.getInt(ACTIVITY_POST_BUFFER_SECONDS_KEY, 300); // Default 5 minutes
+                    long postBufferMillis = postBufferSeconds * 1000L;
+                    
+                    if (currentTime - lastActivityTime > postBufferMillis) {
+                        stopActivityRecording();
+                    }
+                }
+            }
             //     if (hasActivity && !isRecordingActivity) {
             //         // Start activity recording with pre-buffer
             //     } else if (!hasActivity && isRecordingActivity && 
@@ -854,6 +877,118 @@ public class SaidItService extends Service {
         // Dump the recording with the configured duration
         float durationFloat = (float) durationSeconds;
         dumpRecording(durationFloat, null, "");
+    }
+    
+    /**
+     * Start recording detected voice activity.
+     * Creates a new WAV file and starts writing audio with pre-activity buffer.
+     */
+    private void startActivityRecording() {
+        // Only called on audio thread
+        assert audioHandler.getLooper() == Looper.myLooper();
+        
+        if (isRecordingActivity) {
+            return; // Already recording
+        }
+        
+        try {
+            activityStartTime = System.currentTimeMillis();
+            isRecordingActivity = true;
+            
+            // Create output file
+            File storageDir;
+            if (isExternalStorageWritable()) {
+                storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/Activities");
+            } else {
+                storageDir = new File(getFilesDir(), "activities");
+            }
+            
+            if (!storageDir.exists()) {
+                storageDir.mkdirs();
+            }
+            
+            String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(new java.util.Date());
+            activityWavFile = new File(storageDir, "activity_" + timestamp + ".wav");
+            
+            // Initialize WAV writer
+            WavAudioFormat wavAudioFormat = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
+            activityWavFileWriter = new WavFileWriter(wavAudioFormat, activityWavFile);
+            
+            // Get pre-activity buffer settings
+            final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+            int preBufferSeconds = prefs.getInt(ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300); // Default 5 minutes
+            int preBufferBytes = (int)(preBufferSeconds * FILL_RATE);
+            
+            // Write pre-activity buffer from audioMemory
+            audioMemory.read(Math.max(0, audioMemory.countFilled() - preBufferBytes), 
+                new AudioMemory.Consumer() {
+                    @Override
+                    public int consume(byte[] array, int offset, int count) throws IOException {
+                        activityWavFileWriter.write(array, offset, count);
+                        return count;
+                    }
+                });
+            
+            Log.d(TAG, "Started activity recording: " + activityWavFile.getName());
+            
+        } catch (IOException e) {
+            Log.e(TAG, "Error starting activity recording", e);
+            isRecordingActivity = false;
+            activityWavFileWriter = null;
+            activityWavFile = null;
+        }
+    }
+    
+    /**
+     * Stop recording detected voice activity.
+     * Closes the WAV file and adds it to the activity recording database.
+     */
+    private void stopActivityRecording() {
+        // Only called on audio thread
+        assert audioHandler.getLooper() == Looper.myLooper();
+        
+        if (!isRecordingActivity) {
+            return; // Not recording
+        }
+        
+        try {
+            if (activityWavFileWriter != null) {
+                activityWavFileWriter.close();
+                
+                // Calculate duration
+                long durationMillis = System.currentTimeMillis() - activityStartTime;
+                float durationSeconds = durationMillis / 1000.0f;
+                
+                // Add to database
+                if (activityRecordingDatabase != null && activityWavFile != null) {
+                    final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+                    int autoDeleteDays = prefs.getInt(ACTIVITY_AUTO_DELETE_DAYS_KEY, 7); // Default 7 days
+                    long deleteAfter = System.currentTimeMillis() + (autoDeleteDays * 24L * 60L * 60L * 1000L);
+                    
+                    ActivityRecording recording = new ActivityRecording(
+                        System.currentTimeMillis(), // id
+                        activityStartTime, // timestamp
+                        (int) durationSeconds, // durationSeconds (convert float to int)
+                        activityWavFile.getAbsolutePath(), // filePath
+                        false, // not flagged
+                        deleteAfter, // deleteAfterTimestamp
+                        (int) activityWavFile.length() // fileSize in bytes
+                    );
+                    
+                    activityRecordingDatabase.addRecording(recording);
+                    
+                    Log.d(TAG, "Stopped activity recording: " + activityWavFile.getName() + 
+                        " (duration: " + String.format("%.1f", durationSeconds) + "s)");
+                }
+                
+                activityWavFileWriter = null;
+                activityWavFile = null;
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error stopping activity recording", e);
+        } finally {
+            isRecordingActivity = false;
+        }
     }
 
 }
