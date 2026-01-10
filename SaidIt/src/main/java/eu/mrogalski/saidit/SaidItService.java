@@ -1369,7 +1369,7 @@ public class SaidItService extends Service {
 
     // Timeline segments API for activity/silence display
     public interface TimelineCallback {
-        void onTimeline(java.util.List<TimelineSegment> segments, TimelineSegment currentSegment);
+        void onTimeline(java.util.List<TimelineSegment> segments, TimelineSegment currentSegment, float totalMemorySeconds);
     }
 
     public void getTimeline(final TimelineCallback cb) {
@@ -1382,10 +1382,21 @@ public class SaidItService extends Service {
                     final java.util.List<TimelineSegment> segmentsCopy = new java.util.ArrayList<>(timelineSegments);
                     final TimelineSegment currentCopy = currentSegment;
                     
+                    // Calculate total memory in seconds
+                    int bytesAvailable;
+                    if (gradientQualityEnabled) {
+                        bytesAvailable = audioMemoryHigh.countFilled() + 
+                                       audioMemoryMid.countFilled() + 
+                                       audioMemoryLow.countFilled();
+                    } else {
+                        bytesAvailable = audioMemory.countFilled();
+                    }
+                    final float totalMemorySec = bytesAvailable * getBytesToSeconds();
+                    
                     sourceHandler.post(new Runnable() {
                         @Override
                         public void run() {
-                            cb.onTimeline(segmentsCopy, currentCopy);
+                            cb.onTimeline(segmentsCopy, currentCopy, totalMemorySec);
                         }
                     });
                 }

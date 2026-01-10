@@ -445,7 +445,7 @@ public class SaidItFragment extends Fragment {
         
         echo.getTimeline(new SaidItService.TimelineCallback() {
             @Override
-            public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment) {
+            public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment, float totalMemorySeconds) {
                 final Activity activity = getActivity();
                 if (activity == null) return;
                 
@@ -490,6 +490,22 @@ public class SaidItFragment extends Fragment {
                                     addSilenceView(seg, false);
                                 }
                             }
+                        }
+                        
+                        // Calculate and display remaining time if segments don't account for all memory
+                        int totalSegmentSeconds = 0;
+                        if (currentSegment != null) {
+                            totalSegmentSeconds += currentSegment.getCurrentDuration();
+                        }
+                        if (segments != null) {
+                            for (SaidItService.TimelineSegment seg : segments) {
+                                totalSegmentSeconds += seg.durationSeconds;
+                            }
+                        }
+                        
+                        int remainingSeconds = (int)totalMemorySeconds - totalSegmentSeconds;
+                        if (remainingSeconds > 0) {
+                            addRemainingTimeView(remainingSeconds);
                         }
                     }
                 });
@@ -577,6 +593,22 @@ public class SaidItFragment extends Fragment {
         textView.setTextSize(14);
         textView.setPadding(10, 5, 10, 5);
         textView.setTextColor(0xFF888888);
+        
+        activityTimeline.addView(textView);
+    }
+    
+    // Add a view for remaining time not accounted for by segments
+    private void addRemainingTimeView(int remainingSeconds) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        TextView textView = new TextView(activity);
+        String durationStr = formatDuration(remainingSeconds);
+        textView.setText(String.format("Remaining time: %s", durationStr));
+        textView.setTextSize(14);
+        textView.setPadding(10, 5, 10, 5);
+        textView.setTextColor(0xFFAAAAAA);
+        textView.setTypeface(null, android.graphics.Typeface.ITALIC);
         
         activityTimeline.addView(textView);
     }
