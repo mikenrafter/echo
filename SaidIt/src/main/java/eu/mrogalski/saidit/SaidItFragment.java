@@ -59,6 +59,7 @@ public class SaidItFragment extends Fragment {
     private TextView rangeHelpText;
     private TextView skippedGroupsInfo;
     private Button viewSkippedSilenceButton;
+    private TextView crashLogsInfo;
 
     ListenButtonClickListener listenButtonClickListener = new ListenButtonClickListener();
     RecordButtonClickListener recordButtonClickListener = new RecordButtonClickListener();
@@ -223,6 +224,7 @@ public class SaidItFragment extends Fragment {
         rangeHelpText = (TextView) rootView.findViewById(R.id.range_help_text);
         skippedGroupsInfo = (TextView) rootView.findViewById(R.id.skipped_groups_info);
         viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
+        crashLogsInfo = (TextView) rootView.findViewById(R.id.crash_logs_info);
         
         // Load silence threshold and segment count from preferences
         android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
@@ -394,6 +396,17 @@ public class SaidItFragment extends Fragment {
                             } else {
                                 skippedGroupsInfo.setVisibility(View.GONE);
                                 if (viewSkippedSilenceButton != null) viewSkippedSilenceButton.setVisibility(View.GONE);
+                            }
+                        }
+                        
+                        // Display crash log count if any exist
+                        if (crashLogsInfo != null && echo != null) {
+                            int crashLogCount = echo.getCrashLogCount();
+                            if (crashLogCount > 0) {
+                                crashLogsInfo.setText(resources.getString(R.string.crash_logs_available, crashLogCount));
+                                crashLogsInfo.setVisibility(View.VISIBLE);
+                            } else {
+                                crashLogsInfo.setVisibility(View.GONE);
                             }
                         }
                     }

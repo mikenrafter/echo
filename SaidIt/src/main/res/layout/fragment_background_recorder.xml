@@ -133,6 +133,18 @@
                 style="@style/Button"
                 android:visibility="gone"/>
 
+            <TextView
+                android:id="@+id/crash_logs_info"
+                style="@style/SmallText"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginBottom="5dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#FF6B6B"
+                android:visibility="gone"/>
+
 
             <View
                 android:layout_marginLeft="50dp"

@@ -431,50 +431,78 @@ public class SaidItService extends Service {
                 final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
                 try (WavFileWriter writer = new WavFileWriter(format, file)) {
                     try {
-                        // First pass: collect the range into memory for optional normalization
-                        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream(bytesToWrite);
-                        final int totalTarget = bytesToWrite;
-                        final int[] written = new int[]{0};
+                        try {
+                            // First pass: collect the range into memory for optional normalization
+                            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream(bytesToWrite);
+                            final int totalTarget = bytesToWrite;
+                            final int[] written = new int[]{0};
 
-                        AudioMemory.Consumer consumer = new AudioMemory.Consumer() {
-                            @Override
-                            public int consume(byte[] array, int offset, int count) throws IOException {
-                                int remaining = totalTarget - written[0];
-                                if (remaining <= 0) return 0;
-                                int toCopy = Math.min(count, remaining);
-                                baos.write(array, offset, toCopy);
-                                written[0] += toCopy;
-                                return 0;
+                            AudioMemory.Consumer consumer = new AudioMemory.Consumer() {
+                                @Override
+                                public int consume(byte[] array, int offset, int count) throws IOException {
+                                    int remaining = totalTarget - written[0];
+                                    if (remaining <= 0) return 0;
+                                    int toCopy = Math.min(count, remaining);
+                                    baos.write(array, offset, toCopy);
+                                    written[0] += toCopy;
+                                    return 0;
+                                }
+                            };
+
+                            if (useDisk) {
+                                diskAudioBuffer.read(skipBytes, consumer);
+                            } else {
+                                audioMemory.read(skipBytes, consumer);
                             }
-                        };
 
-                        if (useDisk) {
-                            diskAudioBuffer.read(skipBytes, consumer);
-                        } else {
-                            audioMemory.read(skipBytes, consumer);
-                        }
+                            byte[] output = baos.toByteArray();
+                            // Apply effects in order: noise suppression -> normalization
+                            if (noiseSuppressionEnabled) {
+                                output = AudioEffects.applyNoiseSuppression(output, noiseThreshold);
+                            }
+                            if (normalizeEnabled) {
+                                output = AudioEffects.applyAutoNormalization(output);
+                            }
 
-                        byte[] output = baos.toByteArray();
-                        // Apply effects in order: noise suppression -> normalization
-                        if (noiseSuppressionEnabled) {
-                            output = AudioEffects.applyNoiseSuppression(output, noiseThreshold);
-                        }
-                        if (normalizeEnabled) {
-                            output = AudioEffects.applyAutoNormalization(output);
-                        }
+                            writer.write(output);
 
-                        writer.write(output);
-
-                        if (wavFileReceiver != null) {
-                            wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
+                            if (wavFileReceiver != null) {
+                                wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
+                            }
+                        } catch (OutOfMemoryError oomError) {
+                            // OOM at line 457 - try memory-efficient fallback
+                            Log.e(TAG, "OutOfMemoryError during export, attempting memory-efficient fallback", oomError);
+                            writeCrashLog("OOM during export at line 457", oomError);
+                            
+                            try {
+                                // Memory-efficient approach: stream directly to disk without loading into memory
+                                exportMemoryEfficient(writer, skipBytes, bytesToWrite, useDisk);
+                                
+                                if (wavFileReceiver != null) {
+                                    wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
+                                }
+                                
+                                showToast(getString(R.string.export_completed_memory_efficient));
+                            } catch (Exception fallbackError) {
+                                Log.e(TAG, "Memory-efficient fallback also failed", fallbackError);
+                                writeCrashLog("Memory-efficient export fallback failed", fallbackError);
+                                showToast(getString(R.string.export_failed_oom));
+                                throw fallbackError;
+                            }
                         }
                     } catch (IOException e) {
                         showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
                         Log.e(TAG, "Error during writing history into " + file.getAbsolutePath(), e);
+                        writeCrashLog("IOException during export", e);
+                    } catch (Exception e) {
+                        showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
+                        Log.e(TAG, "Unexpected error during export: " + file.getAbsolutePath(), e);
+                        writeCrashLog("Unexpected error during export", e);
                     }
                 } catch (IOException e) {
                     showToast(getString(R.string.cant_create_file) + file.getAbsolutePath());
                     Log.e(TAG, "Can't create file " + file.getAbsolutePath(), e);
+                    writeCrashLog("Failed to create export file", e);
                 }
             }
         });
@@ -1505,6 +1533,135 @@ public class SaidItService extends Service {
             Log.e(TAG, "Error stopping activity recording", e);
         } finally {
             isRecordingActivity = false;
+        }
+    }
+    
+    /**
+     * Memory-efficient export that streams audio data directly to disk
+     * without loading the entire buffer into memory.
+     * Used as fallback when OOM occurs during normal export.
+     */
+    private void exportMemoryEfficient(WavFileWriter writer, int skipBytes, int bytesToWrite, boolean useDisk) throws IOException {
+        // Only called on audio thread
+        assert audioHandler.getLooper() == Looper.myLooper();
+        
+        Log.d(TAG, "Starting memory-efficient export: skipBytes=" + skipBytes + ", bytesToWrite=" + bytesToWrite);
+        
+        // Save current state to internal storage first
+        File tempDir = new File(getFilesDir(), "temp_export");
+        if (!tempDir.exists()) {
+            tempDir.mkdirs();
+        }
+        
+        final int[] totalWritten = new int[]{0};
+        final int targetBytes = bytesToWrite;
+        
+        // Stream data in chunks directly to the writer
+        AudioMemory.Consumer directWriter = new AudioMemory.Consumer() {
+            @Override
+            public int consume(byte[] array, int offset, int count) throws IOException {
+                int remaining = targetBytes - totalWritten[0];
+                if (remaining <= 0) return 0;
+                
+                int toWrite = Math.min(count, remaining);
+                writer.write(array, offset, toWrite);
+                totalWritten[0] += toWrite;
+                
+                // Periodically suggest GC to free up memory
+                if (totalWritten[0] % (AudioMemory.CHUNK_SIZE * 10) == 0) {
+                    System.gc();
+                }
+                
+                return 0;
+            }
+        };
+        
+        // Read and write in streaming fashion
+        if (useDisk) {
+            diskAudioBuffer.read(skipBytes, directWriter);
+        } else {
+            audioMemory.read(skipBytes, directWriter);
+        }
+        
+        Log.d(TAG, "Memory-efficient export completed: " + totalWritten[0] + " bytes written");
+    }
+    
+    /**
+     * Write a crash log file with timestamp to Echo/Crashes directory.
+     * @param message Error message describing the crash
+     * @param error The exception or error that occurred
+     */
+    private void writeCrashLog(String message, Throwable error) {
+        try {
+            // Create Crashes directory
+            File crashDir;
+            if (isExternalStorageWritable()) {
+                crashDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/Crashes");
+            } else {
+                crashDir = new File(getFilesDir(), "Echo/Crashes");
+            }
+            
+            if (!crashDir.exists()) {
+                crashDir.mkdirs();
+            }
+            
+            // Create crash log file with timestamp
+            String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(new java.util.Date());
+            File crashFile = new File(crashDir, "crash_" + timestamp + ".log");
+            
+            // Write crash details
+            java.io.FileWriter writer = new java.io.FileWriter(crashFile);
+            writer.write("Crash Log - " + timestamp + "\n");
+            writer.write("=================================\n\n");
+            writer.write("Message: " + message + "\n\n");
+            writer.write("Error Type: " + error.getClass().getName() + "\n");
+            writer.write("Error Message: " + error.getMessage() + "\n\n");
+            writer.write("Stack Trace:\n");
+            
+            java.io.StringWriter sw = new java.io.StringWriter();
+            java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+            error.printStackTrace(pw);
+            writer.write(sw.toString());
+            
+            writer.write("\n\nDevice Info:\n");
+            writer.write("Android Version: " + Build.VERSION.RELEASE + "\n");
+            writer.write("SDK: " + Build.VERSION.SDK_INT + "\n");
+            writer.write("Model: " + Build.MODEL + "\n");
+            writer.write("Manufacturer: " + Build.MANUFACTURER + "\n");
+            writer.write("Max Memory: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + " MB\n");
+            writer.write("Free Memory: " + (Runtime.getRuntime().freeMemory() / 1024 / 1024) + " MB\n");
+            writer.write("Total Memory: " + (Runtime.getRuntime().totalMemory() / 1024 / 1024) + " MB\n");
+            
+            writer.close();
+            
+            Log.d(TAG, "Crash log written to: " + crashFile.getAbsolutePath());
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to write crash log", e);
+        }
+    }
+    
+    /**
+     * Count the number of crash log files in the Echo/Crashes directory.
+     * @return Number of crash logs
+     */
+    public int getCrashLogCount() {
+        try {
+            File crashDir;
+            if (isExternalStorageWritable()) {
+                crashDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/Crashes");
+            } else {
+                crashDir = new File(getFilesDir(), "Echo/Crashes");
+            }
+            
+            if (!crashDir.exists() || !crashDir.isDirectory()) {
+                return 0;
+            }
+            
+            File[] crashFiles = crashDir.listFiles((dir, name) -> name.startsWith("crash_") && name.endsWith(".log"));
+            return crashFiles != null ? crashFiles.length : 0;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to count crash logs", e);
+            return 0;
         }
     }
 

@@ -179,6 +179,11 @@
     <string name="save_recording">Save Recording</string> <!-- must end sentence -->
     <string name="permission_required">Permission required</string>
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
+    
+    <!-- Export error messages -->
+    <string name="export_completed_memory_efficient">Export completed using memory-efficient mode</string>
+    <string name="export_failed_oom">Export failed: Out of memory. Try reducing memory size or export duration.</string>
+    <string name="crash_logs_available">%d crash log(s) available in Echo/Crashes</string>
     <!--
     <string name="compress_help"><b>WAV</b> - oznacza brak jakiejkolwiek kompresji - jest to format najlepiej oszczędzający baterię i cechujący się najlepszą jakością. Jego wadą jest duże zużycie pamięci.\n
 <b>3GP</b> - oferuje najmocniejszą kompresję ale jest bardzo energożerny i może usunąć z nagrania drobne detale\n
