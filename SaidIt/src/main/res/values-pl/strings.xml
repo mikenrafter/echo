@@ -45,8 +45,6 @@
         <item quantity="many">%d sekund</item>
     </plurals>
 
-    <string name="save_description">Aby zapisać zawartość pamięci do pliku, wybierz ile czasu chcesz zapisać:</string>
-
     <string name="default_price">9.90 zł</string>
 
     <string name="record_description">Aby po zapisaniu pamięci dowolnym z powyższych przycisków, kontynuować nagrywanie, przytrzymaj go dłużej.</string>

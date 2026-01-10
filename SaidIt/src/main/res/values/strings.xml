@@ -42,8 +42,6 @@
         <item quantity="other">%d seconds</item>
     </plurals>
 
-    <string name="save_description">To save contents of memory to a file, choose how much time would you like to save:</string>
-
     <string name="clip_recording">CLIP RECORDING</string>
     <string name="range_help">Choose a start (FROM) and end (TO) time in minutes ago. "Now" means end at the current moment.</string>
 

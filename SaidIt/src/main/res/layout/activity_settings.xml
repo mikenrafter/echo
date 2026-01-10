@@ -710,15 +710,6 @@
             android:text="@string/auto_save_enabled"/>
 
         <TextView
-            style="@style/SmallText"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginBottom="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/auto_save_description"/>
-
-        <TextView
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:layout_marginTop="5dp"
