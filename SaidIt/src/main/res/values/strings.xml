@@ -181,7 +181,7 @@
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
     
     <!-- Export error messages -->
-    <string name="export_completed_memory_efficient">Export completed using memory-efficient mode</string>
+    <string name="export_completed_memory_efficient">Export completed using memory-efficient mode (audio effects bypassed)</string>
     <string name="export_failed_oom">Export failed: Out of memory. Try reducing memory size or export duration.</string>
     <string name="crash_logs_available">%d crash log(s) available in Echo/Crashes</string>
     <!--

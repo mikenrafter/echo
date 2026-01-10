@@ -1540,12 +1540,17 @@ public class SaidItService extends Service {
      * Memory-efficient export that streams audio data directly to disk
      * without loading the entire buffer into memory.
      * Used as fallback when OOM occurs during normal export.
+     * 
+     * NOTE: This method bypasses audio effects (noise suppression and normalization)
+     * to minimize memory usage. This is a necessary tradeoff to complete the export
+     * when memory is constrained.
      */
     private void exportMemoryEfficient(WavFileWriter writer, int skipBytes, int bytesToWrite, boolean useDisk) throws IOException {
         // Only called on audio thread
         assert audioHandler.getLooper() == Looper.myLooper();
         
         Log.d(TAG, "Starting memory-efficient export: skipBytes=" + skipBytes + ", bytesToWrite=" + bytesToWrite);
+        Log.d(TAG, "Note: Audio effects (normalization/noise suppression) are bypassed in memory-efficient mode");
         
         // Save current state to internal storage first
         File tempDir = new File(getFilesDir(), "temp_export");
@@ -1609,30 +1614,29 @@ public class SaidItService extends Service {
             String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(new java.util.Date());
             File crashFile = new File(crashDir, "crash_" + timestamp + ".log");
             
-            // Write crash details
-            java.io.FileWriter writer = new java.io.FileWriter(crashFile);
-            writer.write("Crash Log - " + timestamp + "\n");
-            writer.write("=================================\n\n");
-            writer.write("Message: " + message + "\n\n");
-            writer.write("Error Type: " + error.getClass().getName() + "\n");
-            writer.write("Error Message: " + error.getMessage() + "\n\n");
-            writer.write("Stack Trace:\n");
-            
-            java.io.StringWriter sw = new java.io.StringWriter();
-            java.io.PrintWriter pw = new java.io.PrintWriter(sw);
-            error.printStackTrace(pw);
-            writer.write(sw.toString());
-            
-            writer.write("\n\nDevice Info:\n");
-            writer.write("Android Version: " + Build.VERSION.RELEASE + "\n");
-            writer.write("SDK: " + Build.VERSION.SDK_INT + "\n");
-            writer.write("Model: " + Build.MODEL + "\n");
-            writer.write("Manufacturer: " + Build.MANUFACTURER + "\n");
-            writer.write("Max Memory: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + " MB\n");
-            writer.write("Free Memory: " + (Runtime.getRuntime().freeMemory() / 1024 / 1024) + " MB\n");
-            writer.write("Total Memory: " + (Runtime.getRuntime().totalMemory() / 1024 / 1024) + " MB\n");
-            
-            writer.close();
+            // Write crash details using try-with-resources
+            try (java.io.FileWriter writer = new java.io.FileWriter(crashFile)) {
+                writer.write("Crash Log - " + timestamp + "\n");
+                writer.write("=================================\n\n");
+                writer.write("Message: " + message + "\n\n");
+                writer.write("Error Type: " + error.getClass().getName() + "\n");
+                writer.write("Error Message: " + error.getMessage() + "\n\n");
+                writer.write("Stack Trace:\n");
+                
+                java.io.StringWriter sw = new java.io.StringWriter();
+                java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+                error.printStackTrace(pw);
+                writer.write(sw.toString());
+                
+                writer.write("\n\nDevice Info:\n");
+                writer.write("Android Version: " + Build.VERSION.RELEASE + "\n");
+                writer.write("SDK: " + Build.VERSION.SDK_INT + "\n");
+                writer.write("Model: " + Build.MODEL + "\n");
+                writer.write("Manufacturer: " + Build.MANUFACTURER + "\n");
+                writer.write("Max Memory: " + (Runtime.getRuntime().maxMemory() / 1024 / 1024) + " MB\n");
+                writer.write("Free Memory: " + (Runtime.getRuntime().freeMemory() / 1024 / 1024) + " MB\n");
+                writer.write("Total Memory: " + (Runtime.getRuntime().totalMemory() / 1024 / 1024) + " MB\n");
+            }
             
             Log.d(TAG, "Crash log written to: " + crashFile.getAbsolutePath());
         } catch (Exception e) {
@@ -1657,7 +1661,12 @@ public class SaidItService extends Service {
                 return 0;
             }
             
-            File[] crashFiles = crashDir.listFiles((dir, name) -> name.startsWith("crash_") && name.endsWith(".log"));
+            File[] crashFiles = crashDir.listFiles(new java.io.FilenameFilter() {
+                @Override
+                public boolean accept(File dir, String name) {
+                    return name.startsWith("crash_") && name.endsWith(".log");
+                }
+            });
             return crashFiles != null ? crashFiles.length : 0;
         } catch (Exception e) {
             Log.e(TAG, "Failed to count crash logs", e);
