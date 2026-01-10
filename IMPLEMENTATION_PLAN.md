@@ -313,8 +313,92 @@ eu.mrogalski.saidit.action.SET_BITRATE (extra: bitrate_kbps)
 - Android MediaCodec documentation
 - Voice Activity Detection algorithms
 
+## Recently Completed Features (2026-01)
+
+### AAC Encoding Implementation ✅
+**Status:** COMPLETED
+- Added working `AacMp4Writer` class from fix/auto-save-and-performance branch
+- Implements MediaCodec-based AAC-LC encoding to MP4 container
+- Thread-safe for single-producer usage
+- Updated `AudioEncoder` with proper codec detection
+- **Files Added:** `AacMp4Writer.java`
+- **Files Modified:** `AudioEncoder.java`
+
+### Audio Effects (Export-Only) ✅
+**Status:** COMPLETED
+- Created `AudioEffects` utility class for export/preview processing
+- Noise suppression using amplitude-based noise gate
+- Auto-normalization to maximize volume without clipping
+- **IMPORTANT:** Effects apply ONLY during export/preview, NOT real-time recording
+- Improves recording performance and battery life
+- **Files Added:** `AudioEffects.java`
+- **Files Modified:** `SaidIt.java` (added configuration keys)
+
+### Long Silence Skipping ✅
+**Status:** COMPLETED
+- Configurable silence detection and skipping
+- When consecutive silent segments detected, overwrites in place instead of advancing buffer
+- Saves memory by not storing long periods of silence
+- Configuration parameters:
+  - `SILENCE_SKIP_ENABLED_KEY`: Enable/disable feature
+  - `SILENCE_THRESHOLD_KEY`: Amplitude threshold for silence detection
+  - `SILENCE_SEGMENT_COUNT_KEY`: Number of consecutive silent segments before skipping
+- **Files Modified:** `AudioMemory.java`, `SaidIt.java`
+
+### Git Submodules for Reference ✅
+**Status:** COMPLETED
+- Added `reference/fix-auto-save-and-performance` submodule
+- Added `reference/misc-fixes-and-new-features` submodule
+- Reference implementations available for future development
+
+## Features from misc-fixes-and-new-features Branch
+
+The following features exist in the misc-fixes-and-new-features branch and should be considered for integration:
+
+### Auto-Save Feature
+- Automatically saves recordings at configurable intervals
+- Uses AlarmManager for scheduled saves
+- Configurable duration (default 10 minutes)
+- `scheduleAutoSave()` and `cancelAutoSave()` methods in SaidItService
+- Settings UI with switch and duration slider
+- **Implementation:** Requires AlarmManager integration, ACTION_AUTO_SAVE intent handling
+
+### Save Button with Confirmation
+- SettingsActivity requires explicit save/cancel actions
+- Prevents accidental changes by requiring user confirmation
+- Clear buffer warning dialog when changing settings while recording
+- **Implementation:** UI redesign to add save/cancel buttons, temporary state management
+
+### Enhanced Audio Processing
+- `AudioProcessingPipeline.java` for modular audio processing
+- Noise suppression and automatic gain control toggles
+- Applied during recording (in their implementation)
+- **Note:** Our implementation differs - we apply effects during export only
+
+### Custom Memory Management
+- Direct memory size input in megabytes
+- OOM (Out of Memory) safety checks
+- Memory size validation based on Runtime.maxMemory()
+- Display of memory usage in user-friendly format
+- **Implementation Status:** Partially exists, needs UI enhancement
+
+### Recordings Management
+- `RecordingsActivity.java` and `RecordingsAdapter.java`
+- View and manage saved recordings
+- Delete, share, and export functionality
+- RecyclerView-based list with Material Design
+- **Implementation:** New activity and adapter classes needed
+
+### Enhanced Exporting
+- `RecordingExporter.java` for unified export logic
+- Support for multiple export formats
+- Progress tracking during export
+- Background export with notifications
+- **Implementation:** Export framework with format selection
+
 ## Notes
 - This is a complex enhancement requiring significant development time
 - Some features (especially system audio capture) have Android OS limitations
 - Performance and battery impact must be carefully monitored
 - User privacy and security are paramount
+- Audio effects are now applied during export/preview only (not real-time) for better performance
