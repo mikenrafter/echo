@@ -48,6 +48,7 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
     private MaterialTextView recordingTime;
     private MaterialTextView historySize;
     private MaterialButtonToggleGroup listeningToggleGroup;
+    private MaterialButton saveClipButton;
 
     // State
     private boolean isRecording = false;
@@ -89,7 +90,7 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
         listeningGroup = rootView.findViewById(R.id.listening_group);
         recordingTime = rootView.findViewById(R.id.recording_time);
         historySize = rootView.findViewById(R.id.history_size);
-        MaterialButton saveClipButton = rootView.findViewById(R.id.save_clip_button);
+        saveClipButton = rootView.findViewById(R.id.save_clip_button);
         MaterialButton settingsButton = rootView.findViewById(R.id.settings_button);
         MaterialButton recordingsButton = rootView.findViewById(R.id.recordings_button);
         MaterialButton stopRecordingButton = rootView.findViewById(R.id.rec_stop_button);
@@ -164,6 +165,13 @@ public class SaidItFragment extends Fragment implements SaveClipBottomSheet.Save
                 listeningGroup.setAlpha(0.5f);
             }
             listeningToggleGroup.addOnButtonCheckedListener(listeningToggleListener);
+
+            // Enable save button only when there is memorized audio available
+            if (saveClipButton != null) {
+                boolean hasMemory = memorized > 0.0f;
+                saveClipButton.setEnabled(hasMemory);
+                saveClipButton.setAlpha(hasMemory ? 1.0f : 0.5f);
+            }
 
             if (getView() != null) {
                 getView().postOnAnimationDelayed(updater, 100);
