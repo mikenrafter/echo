@@ -320,6 +320,14 @@ public class SaidItService extends Service {
             @Override
             public void run() {
                 Log.d(TAG, "Executing: STOP LISTENING");
+                // Ensure any ongoing VAD recording is properly finalized to avoid corruption
+                if (isRecordingActivity) {
+                    try {
+                        stopActivityRecording();
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Error while closing VAD recording on stop", t);
+                    }
+                }
                 if(audioRecord != null)
                     audioRecord.release();
                 if(deviceAudioRecord != null) {
@@ -1071,6 +1079,14 @@ public class SaidItService extends Service {
                 final String errorMessage = getString(R.string.error_during_recording_into) + wavFile.getName();
                 Toast.makeText(SaidItService.this, errorMessage, Toast.LENGTH_LONG).show();
                 Log.e(TAG, errorMessage, e);
+                // Close any active VAD recording to ensure file integrity on errors
+                try {
+                    if (isRecordingActivity) {
+                        stopActivityRecording();
+                    }
+                } catch (Throwable t) {
+                    Log.e(TAG, "Error while closing VAD recording after audio error", t);
+                }
                 stopRecording(new SaidItFragment.NotifyFileReceiver(SaidItService.this), "");
             }
         }
