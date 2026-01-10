@@ -16,6 +16,12 @@ public class SaidIt {
     static final String ACTIVITY_HIGH_BITRATE_KEY = "activity_high_bitrate";
     static final String SAMPLE_RATE_KEY = "sample_rate";
     
+    // Gradient quality recording (allocates 3 memory rings: high bitrate for 5min, mid for next 15min, low for rest)
+    static final String GRADIENT_QUALITY_ENABLED_KEY = "gradient_quality_enabled";
+    static final String GRADIENT_QUALITY_HIGH_RATE_KEY = "gradient_quality_high_rate";  // Sample rate for first 5 minutes
+    static final String GRADIENT_QUALITY_MID_RATE_KEY = "gradient_quality_mid_rate";    // Sample rate for next 15 minutes
+    static final String GRADIENT_QUALITY_LOW_RATE_KEY = "gradient_quality_low_rate";    // Sample rate for everything after
+    
     // Audio effects configuration (applied during export/preview only)
     static final String EXPORT_NOISE_SUPPRESSION_ENABLED_KEY = "export_noise_suppression_enabled";
     static final String EXPORT_NOISE_THRESHOLD_KEY = "export_noise_threshold";

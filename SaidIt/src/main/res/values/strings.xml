@@ -170,6 +170,11 @@
     <string name="activity_high_bitrate_label">Use high-bitrate recording</string>
     <string name="activity_detection_updated">Activity detection settings applied</string>
     <string name="activity_detection_invalid_value">Please enter a value greater than zero.</string>
+    
+    <!-- Gradient quality recording -->
+    <string name="gradient_quality_label">Gradient Quality Recording (Experimental)</string>
+    <string name="gradient_quality_enabled">Enable gradient quality (3-tier bitrate)</string>
+    <string name="gradient_quality_description">Allocates 3 memory rings: High bitrate for first 5 minutes (48kHz), mid bitrate for next 15 minutes (16kHz), low bitrate for rest (8kHz). Requires restart. This is an experimental feature not yet fully implemented.</string>
 
     <!-- Others -->
 

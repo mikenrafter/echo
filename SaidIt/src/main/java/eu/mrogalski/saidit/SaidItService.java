@@ -76,6 +76,17 @@ public class SaidItService extends Service {
     private PendingIntent autoSavePendingIntent;
     private PendingIntent autoSaveCleanupPendingIntent;
     int autoSaveAutoDeleteDays = 7; // Auto-delete auto-save files after this many days
+    
+    // Gradient quality recording (FUTURE ENHANCEMENT)
+    // TODO: When enabled, allocate 3 memory rings:
+    //   - High quality (first 5 minutes)
+    //   - Mid quality (next 15 minutes)  
+    //   - Low quality (everything after)
+    // Requires: separate AudioMemory instances, time-based routing, resampling during save
+    volatile boolean gradientQualityEnabled = false;
+    volatile int gradientQualityHighRate = 48000;
+    volatile int gradientQualityMidRate = 16000;
+    volatile int gradientQualityLowRate = 8000;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -134,6 +145,15 @@ public class SaidItService extends Service {
         
         // Initialize auto-save auto-delete configuration
         autoSaveAutoDeleteDays = preferences.getInt(AUTO_SAVE_AUTO_DELETE_DAYS_KEY, 7);
+        
+        // Load gradient quality preferences (FUTURE ENHANCEMENT)
+        gradientQualityEnabled = preferences.getBoolean(GRADIENT_QUALITY_ENABLED_KEY, false);
+        gradientQualityHighRate = preferences.getInt(GRADIENT_QUALITY_HIGH_RATE_KEY, 48000);
+        gradientQualityMidRate = preferences.getInt(GRADIENT_QUALITY_MID_RATE_KEY, 16000);
+        gradientQualityLowRate = preferences.getInt(GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
+        if (gradientQualityEnabled) {
+            Log.w(TAG, "Gradient quality enabled but not yet implemented - ignoring setting");
+        }
         
         // Load device audio recording preference
         recordDeviceAudio = preferences.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);

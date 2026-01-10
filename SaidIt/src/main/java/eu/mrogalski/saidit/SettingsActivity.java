@@ -206,6 +206,9 @@ public class SettingsActivity extends Activity {
 
         // Initialize export effects controls
         initExportEffectsControls(root);
+        
+        // Initialize gradient quality controls
+        initGradientQualityControls(root);
 
         //debugPrintCodecs();
 
@@ -842,5 +845,28 @@ public class SettingsActivity extends Activity {
 
     private int clampDays(int value) {
         return Math.max(1, Math.min(value, 365));
+    }
+    
+    private void initGradientQualityControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox gradientEnabled = (CheckBox) root.findViewById(R.id.gradient_quality_enabled);
+        if (gradientEnabled != null) {
+            gradientEnabled.setChecked(prefs.getBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, false));
+            gradientEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit()
+                        .putBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, isChecked)
+                        .putInt(SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, 48000)
+                        .putInt(SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, 16000)
+                        .putInt(SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, 8000)
+                        .apply();
+                    Toast.makeText(SettingsActivity.this,
+                        isChecked ? "Gradient quality enabled (EXPERIMENTAL - not yet fully implemented)" : "Gradient quality disabled",
+                        Toast.LENGTH_LONG).show();
+                }
+            });
+        }
     }
 }
