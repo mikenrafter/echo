@@ -543,7 +543,12 @@ public class SaidItFragment extends Fragment {
         
         if (showSaveButton) {
             Button saveButton = new Button(activity);
-            saveButton.setText(R.string.save_from_here);
+            // Set button text based on selection state
+            if (selectedFrom == null) {
+                saveButton.setText(R.string.save_from_here);
+            } else {
+                saveButton.setText(R.string.save_to_here);
+            }
             saveButton.setTextSize(12);
             saveButton.setPadding(20, 10, 20, 10);
             saveButton.setOnClickListener(new View.OnClickListener() {
@@ -603,9 +608,56 @@ public class SaidItFragment extends Fragment {
     
     // Initiate save of selected range
     private void initiateRangeSave() {
-        // TODO: Implement range save logic
-        // For now, just show a toast
-        Toast.makeText(getActivity(), "Range save not yet implemented", Toast.LENGTH_SHORT).show();
+        final Activity activity = getActivity();
+        if (activity == null || selectedFrom == null || selectedTo == null) return;
+        
+        // Calculate time ranges based on segment timestamps
+        long currentTime = System.currentTimeMillis();
+        
+        // Get the start and end times of the selected segments
+        long fromStartTime = selectedFrom.segment.startTimeMillis;
+        long toEndTime = selectedTo.segment.endTimeMillis;
+        
+        // If the "to" segment is still ongoing, use current time
+        if (toEndTime == 0) {
+            toEndTime = currentTime;
+        }
+        
+        // Convert to seconds ago (from current time)
+        float fromSecondsAgo = (currentTime - fromStartTime) / 1000f;
+        float toSecondsAgo = (currentTime - toEndTime) / 1000f;
+        
+        // Ensure correct order (fromSecondsAgo should be larger than toSecondsAgo)
+        if (fromSecondsAgo < toSecondsAgo) {
+            float temp = fromSecondsAgo;
+            fromSecondsAgo = toSecondsAgo;
+            toSecondsAgo = temp;
+        }
+        
+        // Prompt for filename
+        View dialogView = View.inflate(activity, R.layout.dialog_save_recording, null);
+        EditText fileName = dialogView.findViewById(R.id.recording_name);
+        
+        new AlertDialog.Builder(activity)
+            .setView(dialogView)
+            .setTitle("Save Recording Range")
+            .setMessage(String.format("FROM: %s ago\nTO: %s ago", 
+                formatDuration((int)fromSecondsAgo), 
+                formatDuration((int)toSecondsAgo)))
+            .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    if(fileName.getText().toString().length() > 0){
+                        echo.dumpRecordingRange(fromSecondsAgo, toSecondsAgo, 
+                            new SaidItFragment.PromptFileReceiver(activity), 
+                            fileName.getText().toString());
+                    } else {
+                        Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
     
     // Format duration in seconds to HH:MM:SS

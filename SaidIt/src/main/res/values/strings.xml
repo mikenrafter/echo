@@ -188,7 +188,8 @@
     <string name="save_from_here">save from here</string>
     <string name="save_to_here">save to here</string>
     <string name="current_activity">Activity: %s [RECORDING]</string>
-    <string name="block_size_preference">Block Size</string>
+    <string name="block_size_label">Activity Block Size</string>
+    <string name="block_size_description">How long each activity block should be displayed in the timeline.</string>
     <string name="block_size_5min">5 minutes</string>
     <string name="block_size_10min">10 minutes</string>
     <string name="block_size_15min">15 minutes</string>

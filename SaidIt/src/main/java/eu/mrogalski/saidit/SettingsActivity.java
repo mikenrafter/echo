@@ -223,6 +223,9 @@ public class SettingsActivity extends Activity {
         
         // Initialize gradient quality controls
         initGradientQualityControls(root);
+        
+        // Initialize block size controls
+        initBlockSizeControls(root);
 
         //debugPrintCodecs();
 
@@ -939,5 +942,54 @@ public class SettingsActivity extends Activity {
         btn8k.setOnClickListener(rateListener);
         btn16k.setOnClickListener(rateListener);
         btn48k.setOnClickListener(rateListener);
+    }
+    
+    private void initBlockSizeControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        int blockSize = prefs.getInt(SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
+        
+        Button btn5 = (Button) root.findViewById(R.id.block_size_5min);
+        Button btn10 = (Button) root.findViewById(R.id.block_size_10min);
+        Button btn15 = (Button) root.findViewById(R.id.block_size_15min);
+        Button btn30 = (Button) root.findViewById(R.id.block_size_30min);
+        Button btn60 = (Button) root.findViewById(R.id.block_size_60min);
+        
+        // Highlight current selection
+        btn5.setBackgroundResource(blockSize == 5 ? R.drawable.green_button : R.drawable.gray_button);
+        btn10.setBackgroundResource(blockSize == 10 ? R.drawable.green_button : R.drawable.gray_button);
+        btn15.setBackgroundResource(blockSize == 15 ? R.drawable.green_button : R.drawable.gray_button);
+        btn30.setBackgroundResource(blockSize == 30 ? R.drawable.green_button : R.drawable.gray_button);
+        btn60.setBackgroundResource(blockSize == 60 ? R.drawable.green_button : R.drawable.gray_button);
+        
+        View.OnClickListener blockSizeListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int minutes = 5;
+                if (v.getId() == R.id.block_size_10min) minutes = 10;
+                else if (v.getId() == R.id.block_size_15min) minutes = 15;
+                else if (v.getId() == R.id.block_size_30min) minutes = 30;
+                else if (v.getId() == R.id.block_size_60min) minutes = 60;
+                
+                prefs.edit().putInt(SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, minutes).apply();
+                
+                // Update button highlights
+                root.findViewById(R.id.block_size_5min).setBackgroundResource(minutes == 5 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_10min).setBackgroundResource(minutes == 10 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_15min).setBackgroundResource(minutes == 15 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_30min).setBackgroundResource(minutes == 30 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_60min).setBackgroundResource(minutes == 60 ? R.drawable.green_button : R.drawable.gray_button);
+                
+                Toast.makeText(SettingsActivity.this,
+                    "Activity block size: " + minutes + " minutes",
+                    Toast.LENGTH_SHORT).show();
+            }
+        };
+        
+        btn5.setOnClickListener(blockSizeListener);
+        btn10.setOnClickListener(blockSizeListener);
+        btn15.setOnClickListener(blockSizeListener);
+        btn30.setOnClickListener(blockSizeListener);
+        btn60.setOnClickListener(blockSizeListener);
     }
 }
