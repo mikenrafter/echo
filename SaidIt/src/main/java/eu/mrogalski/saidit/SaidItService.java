@@ -1546,17 +1546,13 @@ public class SaidItService extends Service {
      * when memory is constrained.
      */
     private void exportMemoryEfficient(WavFileWriter writer, int skipBytes, int bytesToWrite, boolean useDisk) throws IOException {
-        // Only called on audio thread
-        assert audioHandler.getLooper() == Looper.myLooper();
+        // Only called on audio thread - verify in both debug and production builds
+        if (audioHandler.getLooper() != Looper.myLooper()) {
+            throw new IllegalStateException("exportMemoryEfficient must be called on audio thread");
+        }
         
         Log.d(TAG, "Starting memory-efficient export: skipBytes=" + skipBytes + ", bytesToWrite=" + bytesToWrite);
         Log.d(TAG, "Note: Audio effects (normalization/noise suppression) are bypassed in memory-efficient mode");
-        
-        // Save current state to internal storage first
-        File tempDir = new File(getFilesDir(), "temp_export");
-        if (!tempDir.exists()) {
-            tempDir.mkdirs();
-        }
         
         final int[] totalWritten = new int[]{0};
         final int targetBytes = bytesToWrite;
@@ -1623,10 +1619,12 @@ public class SaidItService extends Service {
                 writer.write("Error Message: " + error.getMessage() + "\n\n");
                 writer.write("Stack Trace:\n");
                 
-                java.io.StringWriter sw = new java.io.StringWriter();
-                java.io.PrintWriter pw = new java.io.PrintWriter(sw);
-                error.printStackTrace(pw);
-                writer.write(sw.toString());
+                // Use try-with-resources for StringWriter and PrintWriter
+                try (java.io.StringWriter sw = new java.io.StringWriter();
+                     java.io.PrintWriter pw = new java.io.PrintWriter(sw)) {
+                    error.printStackTrace(pw);
+                    writer.write(sw.toString());
+                }
                 
                 writer.write("\n\nDevice Info:\n");
                 writer.write("Android Version: " + Build.VERSION.RELEASE + "\n");
