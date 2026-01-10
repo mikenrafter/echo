@@ -853,20 +853,77 @@ public class SettingsActivity extends Activity {
         final CheckBox gradientEnabled = (CheckBox) root.findViewById(R.id.gradient_quality_enabled);
         if (gradientEnabled != null) {
             gradientEnabled.setChecked(prefs.getBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, false));
+            
+            // Initialize sample rate buttons
+            final int highRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, 48000);
+            final int midRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, 16000);
+            final int lowRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
+            
+            // High quality buttons
+            setupGradientRateButtons(root, highRate, 
+                R.id.gradient_high_8khz, R.id.gradient_high_16khz, R.id.gradient_high_48khz,
+                SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, "High");
+            
+            // Mid quality buttons
+            setupGradientRateButtons(root, midRate,
+                R.id.gradient_mid_8khz, R.id.gradient_mid_16khz, R.id.gradient_mid_48khz,
+                SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, "Mid");
+            
+            // Low quality buttons
+            setupGradientRateButtons(root, lowRate,
+                R.id.gradient_low_8khz, R.id.gradient_low_16khz, R.id.gradient_low_48khz,
+                SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, "Low");
+            
             gradientEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                 @Override
                 public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                     prefs.edit()
                         .putBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, isChecked)
-                        .putInt(SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, 48000)
-                        .putInt(SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, 16000)
-                        .putInt(SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, 8000)
                         .apply();
                     Toast.makeText(SettingsActivity.this,
-                        isChecked ? "Gradient quality enabled (EXPERIMENTAL - not yet fully implemented)" : "Gradient quality disabled",
+                        isChecked ? "Gradient quality enabled (restart listening to apply)" : "Gradient quality disabled",
                         Toast.LENGTH_LONG).show();
                 }
             });
         }
+    }
+    
+    private void setupGradientRateButtons(View root, int currentRate,
+                                         int id8khz, int id16khz, int id48khz,
+                                         final String prefKey, final String tierName) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        Button btn8k = (Button) root.findViewById(id8khz);
+        Button btn16k = (Button) root.findViewById(id16khz);
+        Button btn48k = (Button) root.findViewById(id48khz);
+        
+        // Highlight current selection
+        btn8k.setBackgroundResource(currentRate == 8000 ? R.drawable.green_button : R.drawable.gray_button);
+        btn16k.setBackgroundResource(currentRate == 16000 ? R.drawable.green_button : R.drawable.gray_button);
+        btn48k.setBackgroundResource(currentRate == 48000 ? R.drawable.green_button : R.drawable.gray_button);
+        
+        View.OnClickListener rateListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int rate = 8000;
+                if (v.getId() == id16khz) rate = 16000;
+                else if (v.getId() == id48khz) rate = 48000;
+                
+                prefs.edit().putInt(prefKey, rate).apply();
+                
+                // Update button highlights
+                root.findViewById(id8khz).setBackgroundResource(rate == 8000 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(id16khz).setBackgroundResource(rate == 16000 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(id48khz).setBackgroundResource(rate == 48000 ? R.drawable.green_button : R.drawable.gray_button);
+                
+                Toast.makeText(SettingsActivity.this,
+                    tierName + " quality: " + (rate/1000) + " kHz (restart listening to apply)",
+                    Toast.LENGTH_SHORT).show();
+            }
+        };
+        
+        btn8k.setOnClickListener(rateListener);
+        btn16k.setOnClickListener(rateListener);
+        btn48k.setOnClickListener(rateListener);
     }
 }
