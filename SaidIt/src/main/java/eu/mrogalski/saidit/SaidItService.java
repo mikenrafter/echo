@@ -1182,6 +1182,7 @@ public class SaidItService extends Service {
                 final AudioMemory.Stats stats;
                 final float bytesToSeconds;
                 final float skippedSeconds;
+                final float totalMemorySeconds; // Actual total capacity in seconds
                 
                 if (gradientQualityEnabled) {
                     // Combine stats from all three rings
@@ -1197,13 +1198,18 @@ public class SaidItService extends Service {
                     stats.overwriting = statsHigh.overwriting || statsMid.overwriting || statsLow.overwriting;
                     stats.skippedSegments = statsHigh.skippedSegments + statsMid.skippedSegments + statsLow.skippedSegments;
                     
+                    // Calculate ACTUAL total capacity by converting each ring's capacity to seconds
+                    float totalCapacityHigh = statsHigh.total / (float)(gradientQualityHighRate * 2);
+                    float totalCapacityMid = statsMid.total / (float)(gradientQualityMidRate * 2);
+                    float totalCapacityLow = statsLow.total / (float)(gradientQualityLowRate * 2);
+                    totalMemorySeconds = totalCapacityHigh + totalCapacityMid + totalCapacityLow;
+                    
                     // Calculate durations for each ring
                     float durationHigh = statsHigh.filled / (float)(gradientQualityHighRate * 2);
                     float durationMid = statsMid.filled / (float)(gradientQualityMidRate * 2);
                     float durationLow = statsLow.filled / (float)(gradientQualityLowRate * 2);
                     
-                    // Use weighted average for bytes to seconds conversion
-                    // (This is approximate - exact calculation would need to track which tier each segment is in)
+                    // Use weighted average for bytes to seconds conversion (for memorized calculation)
                     float totalDuration = durationHigh + durationMid + durationLow;
                     if (totalDuration > 0 && stats.filled > 0) {
                         bytesToSeconds = totalDuration / stats.filled;
@@ -1220,6 +1226,7 @@ public class SaidItService extends Service {
                     // Single ring mode
                     stats = audioMemory.getStats(FILL_RATE);
                     bytesToSeconds = getBytesToSeconds();
+                    totalMemorySeconds = stats.total * bytesToSeconds;
                     skippedSeconds = stats.skippedSegments * AudioMemory.CHUNK_SIZE * bytesToSeconds;
                 }
                 
@@ -1234,7 +1241,7 @@ public class SaidItService extends Service {
                     public void run() {
                         stateCallback.state(listeningEnabled, recording,
                                 (stats.overwriting ? stats.total : stats.filled + stats.estimation) * bytesToSeconds,
-                                stats.total * bytesToSeconds,
+                                totalMemorySeconds,
                                 finalRecorded * bytesToSeconds,
                                 skippedSeconds);
                     }
