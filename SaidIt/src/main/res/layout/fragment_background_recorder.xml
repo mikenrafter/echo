@@ -53,6 +53,15 @@
                 android:text=""/>
 
             <TextView
+                android:id="@+id/skipped_audio_info"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="5dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/SmallText"
+                android:text=""/>
+
+            <TextView
                 android:layout_marginTop="5dp"
                 android:layout_marginBottom="5dp"
                 android:layout_marginLeft="40dp"

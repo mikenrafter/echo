@@ -70,6 +70,7 @@ public class SaidItFragment extends Fragment {
     private TextView history_limit;
     private TextView history_size;
     private TextView history_size_title;
+    private TextView skipped_audio_info;
 
     private LinearLayout rec_section;
     private TextView rec_indicator;
@@ -185,6 +186,7 @@ public class SaidItFragment extends Fragment {
         history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
         history_size_title = (TextView) rootView.findViewById(R.id.history_size_title);
+        skipped_audio_info = (TextView) rootView.findViewById(R.id.skipped_audio_info);
 
         history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
@@ -285,13 +287,13 @@ public class SaidItFragment extends Fragment {
                 startActivity(new Intent(activity, SettingsActivity.class));
             }
         });
-        serviceStateCallback.state(isListening, isRecording, 0, 0, 0);
+        serviceStateCallback.state(isListening, isRecording, 0, 0, 0, 0);
         return rootView;
     }
 
     private SaidItService.StateCallback serviceStateCallback = new SaidItService.StateCallback() {
         @Override
-        public void state(final boolean listeningEnabled, final boolean recording, final float memorized, final float totalMemory, final float recorded) {
+        public void state(final boolean listeningEnabled, final boolean recording, final float memorized, final float totalMemory, final float recorded, final float skippedSeconds) {
             final Activity activity = getActivity();
             if (activity == null) return;
             final Resources resources = activity.getResources();
@@ -346,6 +348,16 @@ public class SaidItFragment extends Fragment {
                 rec_time.setText(timeFormatResult.text);
             }
 
+            // Display skipped audio statistics
+            if (skippedSeconds > 0) {
+                TimeFormat.naturalLanguage(resources, skippedSeconds, timeFormatResult);
+                String skippedText = resources.getString(R.string.silence_skipped_label) + " " + timeFormatResult.text;
+                skipped_audio_info.setText(skippedText);
+                skipped_audio_info.setVisibility(View.VISIBLE);
+            } else {
+                skipped_audio_info.setVisibility(View.GONE);
+            }
+
             history_size.postOnAnimationDelayed(updater, 100);
         }
     };
@@ -366,7 +378,7 @@ public class SaidItFragment extends Fragment {
         public void onClick(View v) {
             echo.getState(new SaidItService.StateCallback() {
                 @Override
-                public void state(final boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                public void state(final boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
                     if (listeningEnabled) {
                         echo.disableListening();
                     } else {
@@ -378,7 +390,7 @@ public class SaidItFragment extends Fragment {
                                 echo.enableListening();
                                 echo.getState(new SaidItService.StateCallback() {
                                     @Override
-                                    public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                                    public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
                                         dialog.dismiss();
                                     }
                                 });
@@ -406,7 +418,7 @@ public class SaidItFragment extends Fragment {
         public void record(final View button, final boolean keepRecording) {
             echo.getState(new SaidItService.StateCallback() {
                 @Override
-                public void state(final boolean listeningEnabled, final boolean recording, float memorized, float totalMemory, float recorded) {
+                public void state(final boolean listeningEnabled, final boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
                     getActivity().runOnUiThread(new Runnable() {
                         @Override
                         public void run() {

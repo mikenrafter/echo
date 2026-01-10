@@ -22,6 +22,7 @@ public class AudioMemory {
     private int silenceThreshold = 500; // Default threshold for silence detection
     private int silenceSegmentCount = 3; // Number of consecutive silent segments before skipping
     private int consecutiveSilentSegments = 0; // Counter for consecutive silent segments
+    private int totalSkippedSegments = 0; // Total number of segments skipped due to silence
 
     synchronized public void allocate(long sizeToEnsure) {
         long currentSize = getAllocatedMemorySize();
@@ -128,6 +129,7 @@ public class AudioMemory {
                         // Keep current buffer, reset offset to overwrite
                         offset = 0;
                         // Don't add to filled list, reuse this buffer
+                        totalSkippedSegments++; // Increment skipped counter
                     } else {
                         // Not enough silent segments yet, advance normally
                         filled.addLast(current);
@@ -153,6 +155,7 @@ public class AudioMemory {
         public int total;
         public int estimation;
         public boolean overwriting; // currentWasFilled;
+        public int skippedSegments; // Total segments skipped due to silence
     }
 
     public synchronized Stats getStats(int fillRate) {
@@ -161,6 +164,7 @@ public class AudioMemory {
         stats.total = (filled.size() + free.size() + (current == null ? 0 : 1)) * CHUNK_SIZE;
         stats.estimation = (int) (filling ? (SystemClock.uptimeMillis() - fillingStartUptimeMillis) * fillRate / 1000 : 0);
         stats.overwriting = currentWasFilled;
+        stats.skippedSegments = totalSkippedSegments;
         return stats;
     }
     
@@ -178,6 +182,7 @@ public class AudioMemory {
         this.silenceThreshold = threshold;
         this.silenceSegmentCount = Math.max(1, segmentCount);
         this.consecutiveSilentSegments = 0;
+        // Don't reset totalSkippedSegments - keep the running total
     }
     
     /**

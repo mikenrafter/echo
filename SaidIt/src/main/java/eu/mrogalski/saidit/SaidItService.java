@@ -87,6 +87,13 @@ public class SaidItService extends Service {
         }
         Log.d(TAG, "Storage mode: " + storageMode);
         
+        // Load and configure silence skipping
+        boolean silenceSkipEnabled = preferences.getBoolean(SILENCE_SKIP_ENABLED_KEY, false);
+        int silenceThreshold = preferences.getInt(SILENCE_THRESHOLD_KEY, 500);
+        int silenceSegmentCount = preferences.getInt(SILENCE_SEGMENT_COUNT_KEY, 3);
+        audioMemory.configureSilenceSkipping(silenceSkipEnabled, silenceThreshold, silenceSegmentCount);
+        Log.d(TAG, "Silence skipping: enabled=" + silenceSkipEnabled + ", threshold=" + silenceThreshold + ", segmentCount=" + silenceSegmentCount);
+        
         // Initialize activity detection
         activityDetectionEnabled = preferences.getBoolean(ACTIVITY_DETECTION_ENABLED_KEY, false);
         if (activityDetectionEnabled) {
@@ -527,6 +534,30 @@ public class SaidItService extends Service {
         FILL_RATE = 2 * SAMPLE_RATE;
         innerStartListening();
     }
+    
+    /**
+     * Configure silence skipping feature.
+     * @param enabled Enable or disable silence skipping
+     * @param threshold Silence detection threshold (0-32767)
+     * @param segmentCount Number of consecutive silent segments before skipping
+     */
+    public void configureSilenceSkipping(final boolean enabled, final int threshold, final int segmentCount) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit()
+            .putBoolean(SILENCE_SKIP_ENABLED_KEY, enabled)
+            .putInt(SILENCE_THRESHOLD_KEY, threshold)
+            .putInt(SILENCE_SEGMENT_COUNT_KEY, segmentCount)
+            .apply();
+        
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                audioMemory.configureSilenceSkipping(enabled, threshold, segmentCount);
+                Log.d(TAG, "Silence skipping configured: enabled=" + enabled + 
+                    ", threshold=" + threshold + ", segmentCount=" + segmentCount);
+            }
+        });
+    }
 
     public interface WavFileReceiver {
         public void fileReady(File file, float runtime);
@@ -657,7 +688,7 @@ public class SaidItService extends Service {
     };
 
     public interface StateCallback {
-        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded);
+        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds);
     }
 
     public void getState(final StateCallback stateCallback) {
@@ -679,13 +710,16 @@ public class SaidItService extends Service {
                 }
                 final float bytesToSeconds = getBytesToSeconds();
                 final int finalRecorded = recorded;
+                // Calculate skipped seconds: each segment is CHUNK_SIZE bytes
+                final float skippedSeconds = stats.skippedSegments * AudioMemory.CHUNK_SIZE * bytesToSeconds;
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         stateCallback.state(listeningEnabled, recording,
                                 (stats.overwriting ? stats.total : stats.filled + stats.estimation) * bytesToSeconds,
                                 stats.total * bytesToSeconds,
-                                finalRecorded * bytesToSeconds);
+                                finalRecorded * bytesToSeconds,
+                                skippedSeconds);
                     }
                 });
             }

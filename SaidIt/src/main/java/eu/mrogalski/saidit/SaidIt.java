@@ -25,6 +25,7 @@ public class SaidIt {
     static final String SILENCE_SKIP_ENABLED_KEY = "silence_skip_enabled";
     static final String SILENCE_THRESHOLD_KEY = "silence_threshold";
     static final String SILENCE_SEGMENT_COUNT_KEY = "silence_segment_count"; // How many consecutive silent segments before skipping
+    static final String TOTAL_SKIPPED_SECONDS_KEY = "total_skipped_seconds"; // Statistics: total seconds skipped
     
     // Auto-save configuration
     static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";

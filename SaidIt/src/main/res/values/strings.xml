@@ -58,7 +58,7 @@
     <string name="upper_memory_limit_settings_end">settings.</string>
 
     <string name="read_more_at">If you want to know more read Frequently Asked Questions at</string>
-    <string name="rate_invite">Did you liked Echo? You can show your support by sponsoring it on GitHub.</string>
+    <string name="rate_invite">Do you enjoy Echo? You can show your support by sponsoring it on GitHub.</string>
 
     <!-- Dialogs -->
 
@@ -124,8 +124,18 @@
     <string name="storage_mode_description">Memory Only: Audio stored in RAM only. Batch to Disk: Audio automatically saved to disk in batches.</string>
     <string name="max_disk_usage_label">Maximum disk usage:</string>
     <string name="max_disk_usage_hint">e.g., 500</string>
-    <string name="disk_usage_info">Current disk usage: %d MB of %d MB</string>
+    <string name="disk_usage_info">Current disk usage: %1$d MB of %2$d MB</string>
     <string name="audio_quality_description">Quality of 8kHz is enough to recognize human speech. Higher options offer different tradeoffs between quality and memory consumption.</string>
+    <string name="silence_skip_label">Silence Skipping</string>
+    <string name="silence_skip_enabled">Enable silence skipping</string>
+    <string name="silence_skip_description">When enabled, consecutive silent segments will be skipped to save memory.</string>
+    <string name="silence_threshold_label">Silence threshold:</string>
+    <string name="silence_segment_count_label">Consecutive silent segments to skip:</string>
+    <string name="silence_skipped_label">Silent audio skipped:</string>
+    <string name="auto_save_label">Auto-Save</string>
+    <string name="auto_save_enabled">Enable auto-save</string>
+    <string name="auto_save_description">Automatically save recordings at regular intervals.</string>
+    <string name="auto_save_duration_label">Auto-save interval (seconds):</string>
     <string name="settings_return">Return</string>
 
     <!-- Others -->

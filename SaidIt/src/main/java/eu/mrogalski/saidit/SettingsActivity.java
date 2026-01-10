@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Rect;
@@ -20,9 +21,12 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -184,6 +188,12 @@ public class SettingsActivity extends Activity {
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
         initSampleRateButton(root, R.id.quality_48kHz, 48000, 44100);
+        
+        // Initialize silence skipping controls
+        initSilenceSkippingControls(root);
+        
+        // Initialize auto-save controls
+        initAutoSaveControls(root);
 
         //debugPrintCodecs();
 
@@ -242,7 +252,7 @@ public class SettingsActivity extends Activity {
                     service.setMemorySize(memory);
                     service.getState(new SaidItService.StateCallback() {
                         @Override
-                        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
                             syncUI();
                             if (dialog.isVisible()) dialog.dismiss();
                         }
@@ -273,7 +283,7 @@ public class SettingsActivity extends Activity {
                     service.setSampleRate(sampleRate);
                     service.getState(new SaidItService.StateCallback() {
                         @Override
-                        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
                             syncUI();
                             if (dialog.isVisible()) dialog.dismiss();
                         }
@@ -323,7 +333,7 @@ public class SettingsActivity extends Activity {
                         service.setMemorySizeMB(memorySizeMB);
                         service.getState(new SaidItService.StateCallback() {
                             @Override
-                            public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                            public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
                                 syncUI();
                                 String message = getString(R.string.memory_size_applied, memorySizeMB);
                                 Toast.makeText(SettingsActivity.this, message, Toast.LENGTH_SHORT).show();
@@ -367,5 +377,138 @@ public class SettingsActivity extends Activity {
                     return StorageMode.MEMORY_ONLY;
             }
         }
+    }
+    
+    private void initSilenceSkippingControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox silenceSkipEnabled = (CheckBox) root.findViewById(R.id.silence_skip_enabled);
+        silenceSkipEnabled.setChecked(prefs.getBoolean(SaidIt.SILENCE_SKIP_ENABLED_KEY, false));
+        
+        final SeekBar thresholdSlider = (SeekBar) root.findViewById(R.id.silence_threshold_slider);
+        final TextView thresholdValue = (TextView) root.findViewById(R.id.silence_threshold_value);
+        int threshold = prefs.getInt(SaidIt.SILENCE_THRESHOLD_KEY, 500);
+        thresholdSlider.setProgress(threshold);
+        thresholdValue.setText(String.valueOf(threshold));
+        
+        thresholdSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                thresholdValue.setText(String.valueOf(progress));
+            }
+            
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                int threshold = seekBar.getProgress();
+                int segmentCount = prefs.getInt(SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
+                boolean enabled = silenceSkipEnabled.isChecked();
+                service.configureSilenceSkipping(enabled, threshold, segmentCount);
+                prefs.edit().putInt(SaidIt.SILENCE_THRESHOLD_KEY, threshold).apply();
+            }
+        });
+        
+        final SeekBar segmentCountSlider = (SeekBar) root.findViewById(R.id.silence_segment_count_slider);
+        final TextView segmentCountValue = (TextView) root.findViewById(R.id.silence_segment_count_value);
+        int segmentCount = prefs.getInt(SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
+        segmentCountSlider.setProgress(segmentCount);
+        segmentCountValue.setText(String.valueOf(segmentCount));
+        
+        segmentCountSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                segmentCountValue.setText(String.valueOf(Math.max(1, progress)));
+            }
+            
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                int segmentCount = Math.max(1, seekBar.getProgress());
+                int threshold = prefs.getInt(SaidIt.SILENCE_THRESHOLD_KEY, 500);
+                boolean enabled = silenceSkipEnabled.isChecked();
+                service.configureSilenceSkipping(enabled, threshold, segmentCount);
+                prefs.edit().putInt(SaidIt.SILENCE_SEGMENT_COUNT_KEY, segmentCount).apply();
+            }
+        });
+        
+        silenceSkipEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                int threshold = prefs.getInt(SaidIt.SILENCE_THRESHOLD_KEY, 500);
+                int segmentCount = prefs.getInt(SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
+                service.configureSilenceSkipping(isChecked, threshold, segmentCount);
+                prefs.edit().putBoolean(SaidIt.SILENCE_SKIP_ENABLED_KEY, isChecked).apply();
+                Toast.makeText(SettingsActivity.this, 
+                    "Silence skipping " + (isChecked ? "enabled" : "disabled"), 
+                    Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+    
+    private void initAutoSaveControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox autoSaveEnabled = (CheckBox) root.findViewById(R.id.auto_save_enabled);
+        autoSaveEnabled.setChecked(prefs.getBoolean(SaidIt.AUTO_SAVE_ENABLED_KEY, false));
+        
+        final EditText durationInput = (EditText) root.findViewById(R.id.auto_save_duration_input);
+        int duration = prefs.getInt(SaidIt.AUTO_SAVE_DURATION_KEY, 600);
+        durationInput.setText(String.valueOf(duration));
+        
+        autoSaveEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                prefs.edit().putBoolean(SaidIt.AUTO_SAVE_ENABLED_KEY, isChecked).apply();
+                if (isChecked) {
+                    try {
+                        int duration = Integer.parseInt(durationInput.getText().toString());
+                        if (duration > 0) {
+                            prefs.edit().putInt(SaidIt.AUTO_SAVE_DURATION_KEY, duration).apply();
+                            service.scheduleAutoSave();
+                            Toast.makeText(SettingsActivity.this, 
+                                "Auto-save enabled (every " + duration + "s)", 
+                                Toast.LENGTH_SHORT).show();
+                        } else {
+                            autoSaveEnabled.setChecked(false);
+                            Toast.makeText(SettingsActivity.this, 
+                                "Invalid duration", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (NumberFormatException e) {
+                        autoSaveEnabled.setChecked(false);
+                        Toast.makeText(SettingsActivity.this, 
+                            "Please enter a valid duration", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    service.cancelAutoSave();
+                    Toast.makeText(SettingsActivity.this, 
+                        "Auto-save disabled", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        
+        durationInput.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus && autoSaveEnabled.isChecked()) {
+                    try {
+                        int duration = Integer.parseInt(durationInput.getText().toString());
+                        if (duration > 0) {
+                            prefs.edit().putInt(SaidIt.AUTO_SAVE_DURATION_KEY, duration).apply();
+                            service.cancelAutoSave();
+                            service.scheduleAutoSave();
+                            Toast.makeText(SettingsActivity.this, 
+                                "Auto-save interval updated", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (NumberFormatException e) {
+                        Toast.makeText(SettingsActivity.this, 
+                            "Invalid duration", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        });
     }
 }
