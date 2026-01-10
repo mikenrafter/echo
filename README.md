@@ -34,10 +34,18 @@ Full automation API for integration with Tasker, Automate, and other automation 
 - Switch storage modes programmatically
 - Configure memory size via intent
 - Dump recording without continuous recording
+- Export a specific range via intent (`DUMP_RECORDING_RANGE`)
 
 See [INTENT_API.md](INTENT_API.md) for complete documentation and examples.
 
 #### 4. Audio Activity Detection (Partial Implementation)
+#### 5. Export Effects (Export-Only)
+- Toggle normalization when exporting WAV
+- Toggle noise suppression when exporting WAV
+- Effects apply only to exports (not live recording)
+
+In the app Settings, see “Export Effects”.
+
 Infrastructure for detecting and recording audio activity:
 - Voice Activity Detection (VAD) using amplitude-based detection
 - Automatic recording when audio activity detected
@@ -72,6 +80,7 @@ Infrastructure for detecting and recording audio activity:
 - [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) - Detailed feature descriptions and implementation approach
 - [TODO.md](TODO.md) - Granular task breakdown for ongoing development
 - [INTENT_API.md](INTENT_API.md) - Complete automation API documentation
+	- Includes `DUMP_RECORDING_RANGE` for precise slice export
 
 ## Building
 

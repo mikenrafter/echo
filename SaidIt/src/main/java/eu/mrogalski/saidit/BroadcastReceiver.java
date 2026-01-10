@@ -20,11 +20,14 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
     public static final String ACTION_SET_DISK_MODE = "eu.mrogalski.saidit.action.SET_DISK_MODE";
     public static final String ACTION_SET_MEMORY_SIZE = "eu.mrogalski.saidit.action.SET_MEMORY_SIZE";
     public static final String ACTION_DUMP_RECORDING = "eu.mrogalski.saidit.action.DUMP_RECORDING";
+    public static final String ACTION_DUMP_RECORDING_RANGE = "eu.mrogalski.saidit.action.DUMP_RECORDING_RANGE";
 
     // Intent extras
     public static final String EXTRA_MEMORY_SIZE_MB = "memory_size_mb";
     public static final String EXTRA_PREPEND_SECONDS = "prepend_seconds";
     public static final String EXTRA_FILENAME = "filename";
+    public static final String EXTRA_FROM_SECONDS_AGO = "from_seconds_ago";
+    public static final String EXTRA_TO_SECONDS_AGO = "to_seconds_ago";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -132,6 +135,23 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
                 if (dumpFilename == null) dumpFilename = "";
                 service.dumpRecording(dumpSeconds, null, dumpFilename);
                 Log.d(TAG, "Dumped recording");
+                break;
+
+            case ACTION_DUMP_RECORDING_RANGE:
+                float fromSeconds = intent.getFloatExtra(EXTRA_FROM_SECONDS_AGO, 300.0f);
+                float toSeconds = intent.getFloatExtra(EXTRA_TO_SECONDS_AGO, 0.0f);
+                // Validate range seconds (0 to 1 hour), and ensure from >= to
+                if (fromSeconds < 0) fromSeconds = 0;
+                if (toSeconds < 0) toSeconds = 0;
+                if (fromSeconds > 3600) fromSeconds = 3600;
+                if (toSeconds > 3600) toSeconds = 3600;
+                if (fromSeconds < toSeconds) {
+                    float tmp = fromSeconds; fromSeconds = toSeconds; toSeconds = tmp;
+                }
+                String rangeFilename = intent.getStringExtra(EXTRA_FILENAME);
+                if (rangeFilename == null) rangeFilename = "";
+                service.dumpRecordingRange(fromSeconds, toSeconds, null, rangeFilename);
+                Log.d(TAG, "Dumped recording range from " + fromSeconds + "s to " + toSeconds + "s ago");
                 break;
 
             default:

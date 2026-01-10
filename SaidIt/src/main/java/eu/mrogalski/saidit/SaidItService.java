@@ -258,46 +258,75 @@ public class SaidItService extends Service {
     }
 
     public void dumpRecording(final float memorySeconds, final WavFileReceiver wavFileReceiver, String newFileName) {
+        // Backward-compatible: export last "memorySeconds" ending at now
+        dumpRecordingRange(memorySeconds, 0.0f, wavFileReceiver, newFileName);
+    }
+
+
+    /**
+     * Export a recording from a specified time range.
+     * startSecondsAgo: the FROM time (seconds ago)
+     * endSecondsAgo: the TO time (seconds ago), 0 means now
+     */
+    public void dumpRecordingRange(final float startSecondsAgo, final float endSecondsAgo,
+                                   final WavFileReceiver wavFileReceiver, final String newFileName) {
         if(state != STATE_LISTENING) throw new IllegalStateException("Not listening!");
 
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
                 flushAudioRecord();
-                int prependBytes = (int)(memorySeconds * FILL_RATE);
+
+                // Sanitize inputs
+                float startSec = Math.max(0f, startSecondsAgo);
+                float endSec = Math.max(0f, Math.min(startSec, endSecondsAgo)); // end <= start
+
                 int bytesAvailable;
-                
-                // Get bytes available from appropriate storage
-                if (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null) {
+                boolean useDisk = (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null);
+                if (useDisk) {
                     bytesAvailable = (int) diskAudioBuffer.getTotalBytes();
-                    Log.d(TAG, "Dumping from disk buffer: " + bytesAvailable + " bytes");
+                    Log.d(TAG, "Dumping range from disk buffer: " + bytesAvailable + " bytes");
                 } else {
                     bytesAvailable = audioMemory.countFilled();
-                    Log.d(TAG, "Dumping from memory buffer: " + bytesAvailable + " bytes");
+                    Log.d(TAG, "Dumping range from memory buffer: " + bytesAvailable + " bytes");
                 }
 
-                int skipBytes = Math.max(0, bytesAvailable - prependBytes);
+                int startOffsetBytes = (int)(startSec * FILL_RATE);
+                int endOffsetBytes = (int)(endSec * FILL_RATE);
 
-                int useBytes = bytesAvailable - skipBytes;
-                long millis  = System.currentTimeMillis() - 1000 * useBytes / FILL_RATE;
+                int startPos = Math.max(0, bytesAvailable - startOffsetBytes);
+                int endPos = Math.max(0, bytesAvailable - endOffsetBytes);
+                if (endPos < startPos) {
+                    // Swap if inputs were reversed
+                    int tmp = startPos;
+                    startPos = endPos;
+                    endPos = tmp;
+                }
+                int skipBytes = startPos;
+                int bytesToWrite = Math.max(0, Math.min(bytesAvailable - skipBytes, endPos - startPos));
+
+                // Build filename based on end time
+                long millis  = System.currentTimeMillis() - (long)(1000L * (endOffsetBytes) / FILL_RATE);
                 final int flags = DateUtils.FORMAT_SHOW_TIME | DateUtils.FORMAT_SHOW_WEEKDAY | DateUtils.FORMAT_SHOW_DATE;
                 final String dateTime = DateUtils.formatDateTime(SaidItService.this, millis, flags);
                 String filename = "Echo - " + dateTime + ".wav";
-                if(!newFileName.equals("")){
+                if(newFileName != null && !newFileName.equals("")){
                     filename = newFileName + ".wav";
                 }
 
-                // Auto-save files go to Echo/AutoSave subfolder
+                // Auto-save exports go to Echo/AutoSave; manual exports go to Echo/
+                // If caller provided a name, treat as manual export
                 File storageDir;
+                boolean isManualExport = newFileName != null && !newFileName.isEmpty();
                 if(isExternalStorageWritable()){
-                    // Use public storage directory for Android 11+ (min SDK 30)
-                    storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/AutoSave");
+                    storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+                            isManualExport ? "Echo" : "Echo/AutoSave");
                 }else{
-                    storageDir = new File(getFilesDir(), "Echo/AutoSave");
+                    storageDir = new File(getFilesDir(), isManualExport ? "Echo" : "Echo/AutoSave");
                 }
 
                 if(!storageDir.exists()){
-                    storageDir.mkdir();
+                    storageDir.mkdirs();
                 }
                 File file = new File(storageDir, filename);
 
@@ -305,55 +334,73 @@ public class SaidItService extends Service {
                 if (!file.exists()) {
                     try {
                         if (!file.createNewFile()) {
-                            // Handle file creation failure
                             throw new IOException("Failed to create file");
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
-                        // Handle IOException
                         showToast(getString(R.string.cant_create_file) + file.getAbsolutePath());
+                        return;
                     }
                 }
+
+                // Read export effect preferences
+                final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+                final boolean normalizeEnabled = prefs.getBoolean(EXPORT_AUTO_NORMALIZE_ENABLED_KEY, false);
+                final boolean noiseSuppressionEnabled = prefs.getBoolean(EXPORT_NOISE_SUPPRESSION_ENABLED_KEY, false);
+                final int noiseThreshold = prefs.getInt(EXPORT_NOISE_THRESHOLD_KEY, 500);
+
                 final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
                 try (WavFileWriter writer = new WavFileWriter(format, file)) {
                     try {
-                        // Read from appropriate storage based on mode
-                        if (storageMode == StorageMode.BATCH_TO_DISK && diskAudioBuffer != null) {
-                            // Read from disk buffer
-                            diskAudioBuffer.read(skipBytes, new AudioMemory.Consumer() {
-                                @Override
-                                public int consume(byte[] array, int offset, int count) throws IOException {
-                                    writer.write(array, offset, count);
-                                    return 0;
-                                }
-                            });
+                        // First pass: collect the range into memory for optional normalization
+                        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream(bytesToWrite);
+                        final int totalTarget = bytesToWrite;
+                        final int[] written = new int[]{0};
+
+                        AudioMemory.Consumer consumer = new AudioMemory.Consumer() {
+                            @Override
+                            public int consume(byte[] array, int offset, int count) throws IOException {
+                                int remaining = totalTarget - written[0];
+                                if (remaining <= 0) return 0;
+                                int toCopy = Math.min(count, remaining);
+                                baos.write(array, offset, toCopy);
+                                written[0] += toCopy;
+                                return 0;
+                            }
+                        };
+
+                        if (useDisk) {
+                            diskAudioBuffer.read(skipBytes, consumer);
                         } else {
-                            // Read from memory buffer
-                            audioMemory.read(skipBytes, new AudioMemory.Consumer() {
-                                @Override
-                                public int consume(byte[] array, int offset, int count) throws IOException {
-                                    writer.write(array, offset, count);
-                                    return 0;
-                                }
-                            });
+                            audioMemory.read(skipBytes, consumer);
+                        }
+
+                        byte[] output = baos.toByteArray();
+                        // Apply effects in order: noise suppression -> normalization
+                        if (noiseSuppressionEnabled) {
+                            output = AudioEffects.applyNoiseSuppression(output, noiseThreshold);
+                        }
+                        if (normalizeEnabled) {
+                            output = AudioEffects.applyAutoNormalization(output);
+                        }
+
+                        writer.write(output);
+
+                        if (wavFileReceiver != null) {
+                            wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
                         }
                     } catch (IOException e) {
-                        // Handle error during file writing
                         showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
                         Log.e(TAG, "Error during writing history into " + file.getAbsolutePath(), e);
                     }
-                    if (wavFileReceiver != null) {
-                        wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
-                    }
                 } catch (IOException e) {
-                    // Handle error during file creation or closing writer
                     showToast(getString(R.string.cant_create_file) + file.getAbsolutePath());
                     Log.e(TAG, "Can't create file " + file.getAbsolutePath(), e);
                 }
             }
         });
-
     }
+
     private static boolean isExternalStorageWritable() {
         String state = Environment.getExternalStorageState();
         return Environment.MEDIA_MOUNTED.equals(state);
@@ -1127,31 +1174,44 @@ public class SaidItService extends Service {
         try {
             if (activityWavFileWriter != null) {
                 activityWavFileWriter.close();
-                
-                // Calculate duration
-                long durationMillis = System.currentTimeMillis() - activityStartTime;
-                float durationSeconds = durationMillis / 1000.0f;
-                
-                // Add to database
-                if (activityRecordingDatabase != null && activityWavFile != null) {
-                    long deleteAfter = System.currentTimeMillis() + (activityAutoDeleteDays * 24L * 60L * 60L * 1000L);
-                    
-                    ActivityRecording recording = new ActivityRecording(
-                        System.currentTimeMillis(), // id
-                        activityStartTime, // timestamp
-                        (int) durationSeconds, // durationSeconds (convert float to int)
-                        activityWavFile.getAbsolutePath(), // filePath
-                        false, // not flagged
-                        deleteAfter, // deleteAfterTimestamp
-                        (int) activityWavFile.length() // fileSize in bytes
-                    );
-                    
-                    activityRecordingDatabase.addRecording(recording);
-                    
-                    Log.d(TAG, "Stopped activity recording: " + activityWavFile.getName() + 
-                        " (duration: " + String.format("%.1f", durationSeconds) + "s)");
+
+                // Validate file has audio data (WAV header is ~44 bytes)
+                boolean validAudio = activityWavFile != null && activityWavFile.length() > 44;
+
+                if (validAudio) {
+                    // Calculate duration
+                    long durationMillis = System.currentTimeMillis() - activityStartTime;
+                    float durationSeconds = durationMillis / 1000.0f;
+
+                    // Add to database
+                    if (activityRecordingDatabase != null && activityWavFile != null) {
+                        long deleteAfter = System.currentTimeMillis() + (activityAutoDeleteDays * 24L * 60L * 60L * 1000L);
+
+                        ActivityRecording recording = new ActivityRecording(
+                                System.currentTimeMillis(), // id
+                                activityStartTime, // timestamp
+                                (int) durationSeconds, // durationSeconds
+                                activityWavFile.getAbsolutePath(), // filePath
+                                false, // not flagged
+                                deleteAfter, // deleteAfterTimestamp
+                                (int) activityWavFile.length() // fileSize in bytes
+                        );
+
+                        activityRecordingDatabase.addRecording(recording);
+
+                        Log.d(TAG, "Stopped activity recording: " + activityWavFile.getName() +
+                                " (duration: " + String.format("%.1f", durationSeconds) + "s)");
+                    }
+                } else {
+                    Log.w(TAG, "VAD recording contained no audio; deleting file: " +
+                            (activityWavFile != null ? activityWavFile.getAbsolutePath() : "<null>"));
+                    if (activityWavFile != null) {
+                        // Delete the empty/corrupted file
+                        //noinspection ResultOfMethodCallIgnored
+                        activityWavFile.delete();
+                    }
                 }
-                
+
                 activityWavFileWriter = null;
                 activityWavFile = null;
             }

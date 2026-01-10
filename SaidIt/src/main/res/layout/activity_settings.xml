@@ -583,6 +583,52 @@
             android:layout_height="wrap_content"
             android:text="@string/auto_save_description"/>
 
+            <!-- Export Effects Settings -->
+            <TextView
+                android:layout_marginTop="25dp"
+                android:layout_marginBottom="5dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/export_effects_label"
+                android:textSize="18sp"
+                android:textStyle="bold"/>
+
+            <CheckBox
+                android:id="@+id/export_noise_suppression_enabled"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginTop="10dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/export_noise_suppression_enabled"/>
+
+            <TextView
+                style="@style/SmallText"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginBottom="10dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/export_noise_suppression_description"/>
+
+            <CheckBox
+                android:id="@+id/export_auto_normalize_enabled"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginTop="10dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/export_auto_normalize_enabled"/>
+
+            <TextView
+                style="@style/SmallText"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginBottom="10dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/export_auto_normalize_description"/>
+
         <TextView
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"

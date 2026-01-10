@@ -79,6 +79,9 @@ public class SaidItFragment extends Fragment {
     private ImageButton rate_on_google_play;
     private ImageView heart;
 
+    // Callback for minute input prompts used in range export flow
+    private interface MinutesCallback { void onMinutes(float minutes); }
+
     @Override
     public void onStart() {
         Log.d(TAG, "onStart");
@@ -432,30 +435,123 @@ public class SaidItFragment extends Fragment {
                                 if (keepRecording) {
                                     echo.startRecording(seconds);
                                 } else {
-                                    //create alert dialog with exittext to name the file
-                                    View dialogView = View.inflate(getActivity(), R.layout.dialog_save_recording, null);
-                                    EditText fileName = dialogView.findViewById(R.id.recording_name);
-                                    new AlertDialog.Builder(getActivity())
-                                        .setView(dialogView)
-                                        .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                                            @Override
-                                            public void onClick(DialogInterface dialog, int which) {
-                                                if(fileName.getText().toString().length() > 0){
-                                                    echo.dumpRecording(seconds, new PromptFileReceiver(getActivity()),fileName.getText().toString());
-                                                } else {
-                                                    Toast.makeText(getActivity(), "Please enter a file name", Toast.LENGTH_SHORT).show();
-                                                }
-                                            }
-                                        })
-                                        .setNegativeButton("Cancel", null)
-                                        .show();
+                                    // Range export flow: select FROM then TO, then filename
                                     pd.dismiss();
+                                    showRangeExportDialog(seconds);
                                 }
                             }
                         }
                     });
                 }
             });
+        }
+
+        private void showRangeExportDialog(final float defaultStartSeconds) {
+            final Context ctx = getActivity();
+
+            // Step 1: FROM time
+            final String[] options = new String[]{
+                    "Last 1 minute", "Last 5 minutes", "Last 30 minutes",
+                    "Last 2 hours", "Last 6 hours", "Max", "Other…"
+            };
+            final float[] values = new float[]{ 60f, 300f, 1800f, 7200f, 21600f, 60f * 60f * 24f * 365f, -1f };
+            int defaultIndex = 0;
+            for (int i = 0; i < values.length; i++) {
+                if (values[i] == defaultStartSeconds) { defaultIndex = i; break; }
+            }
+
+            new AlertDialog.Builder(ctx)
+                    .setTitle("Select FROM time")
+                    .setSingleChoiceItems(options, defaultIndex, null)
+                    .setPositiveButton("Next", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            AlertDialog ad = (AlertDialog) dialog;
+                            int selected = ad.getListView().getCheckedItemPosition();
+                            float startSec = values[selected];
+                            if (startSec < 0) {
+                                // Other… prompt
+                                promptForMinutes(ctx, "Enter minutes (FROM)", new MinutesCallback() {
+                                    @Override public void onMinutes(float minutes) {
+                                        proceedToToTime(ctx, minutes * 60f);
+                                    }
+                                });
+                            } else {
+                                proceedToToTime(ctx, startSec);
+                            }
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        }
+
+        private void proceedToToTime(final Context ctx, final float startSec) {
+            // Step 2: TO time (Now or Other…)
+            final String[] toOptions = new String[]{ "Now", "Other…" };
+            new AlertDialog.Builder(ctx)
+                    .setTitle("Select TO time")
+                    .setItems(toOptions, new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface dialog, int which) {
+                            if (which == 0) {
+                                // Now
+                                promptForFileNameAndExport(ctx, startSec, 0f);
+                            } else {
+                                // Other… minutes
+                                promptForMinutes(ctx, "Enter minutes (TO)", new MinutesCallback() {
+                                    @Override public void onMinutes(float minutes) {
+                                        float endSec = Math.max(0f, Math.min(startSec, minutes * 60f));
+                                        promptForFileNameAndExport(ctx, startSec, endSec);
+                                    }
+                                });
+                            }
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        }
+
+        private void promptForFileNameAndExport(final Context ctx, final float startSec, final float endSec) {
+            View dialogView = View.inflate(ctx, R.layout.dialog_save_recording, null);
+            EditText fileName = dialogView.findViewById(R.id.recording_name);
+            new AlertDialog.Builder(ctx)
+                    .setView(dialogView)
+                    .setTitle("Save Recording Range")
+                    .setMessage("FROM: " + (int)(startSec/60f) + " min ago\nTO: " + (endSec == 0f ? "Now" : ((int)(endSec/60f) + " min ago")))
+                    .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            if(fileName.getText().toString().length() > 0){
+                                echo.dumpRecordingRange(startSec, endSec, new PromptFileReceiver(getActivity()), fileName.getText().toString());
+                            } else {
+                                Toast.makeText(ctx, "Please enter a file name", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        }
+
+
+        private void promptForMinutes(Context ctx, String title, MinutesCallback cb) {
+            final EditText input = new EditText(ctx);
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            input.setHint("e.g. 15");
+            new AlertDialog.Builder(ctx)
+                    .setTitle(title)
+                    .setView(input)
+                    .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface dialog, int which) {
+                            try {
+                                String txt = input.getText().toString();
+                                float minutes = Float.parseFloat(txt);
+                                cb.onMinutes(minutes);
+                            } catch (Exception e) {
+                                Toast.makeText(ctx, "Invalid minutes", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
         }
 
         float getPrependedSeconds(View button) {

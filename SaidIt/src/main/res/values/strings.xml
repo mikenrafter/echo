@@ -138,6 +138,13 @@
     <string name="auto_save_duration_label">Auto-save interval (seconds):</string>
     <string name="settings_return">Return</string>
 
+    <!-- Export effects settings -->
+    <string name="export_effects_label">Export Effects</string>
+    <string name="export_auto_normalize_enabled">Enable auto-normalize on export</string>
+    <string name="export_auto_normalize_description">Normalize volume when exporting to WAV. Does not affect live recording.</string>
+    <string name="export_noise_suppression_enabled">Enable noise suppression on export</string>
+    <string name="export_noise_suppression_description">Reduce background noise when exporting to WAV. Does not affect live recording.</string>
+
     <!-- Activity detection settings -->
     <string name="activity_detection_label">Activity Detection</string>
     <string name="activity_detection_enabled">Enable activity detection</string>

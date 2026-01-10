@@ -61,6 +61,29 @@ Saves audio from memory buffer to a file without starting continuous recording.
 adb shell am broadcast -a eu.mrogalski.saidit.action.DUMP_RECORDING --ef prepend_seconds 60.0 --es filename "QuickDump"
 ```
 
+#### DUMP_RECORDING_RANGE
+Saves a specific time range from the memory/disk buffer to a file without starting continuous recording.
+
+Use this to export a slice of recent audio, e.g., from 10 minutes ago to now, or between two points in the past.
+
+**Action:** `eu.mrogalski.saidit.action.DUMP_RECORDING_RANGE`
+
+**Extras:**
+- `from_seconds_ago` (float, optional): Start of the range in seconds ago. Default: 300.0
+- `to_seconds_ago` (float, optional): End of the range in seconds ago. Default: 0.0 (now)
+- `filename` (String, optional): Custom filename (without extension)
+
+Values are clamped to 0–3600 seconds. If `from_seconds_ago` is less than `to_seconds_ago`, they will be swapped.
+
+**Examples:**
+```bash
+# Export from 10 minutes ago up to now
+adb shell am broadcast -a eu.mrogalski.saidit.action.DUMP_RECORDING_RANGE --ef from_seconds_ago 600.0 --ef to_seconds_ago 0.0 --es filename "TenMinToNow"
+
+# Export a slice from 25 min ago to 20 min ago
+adb shell am broadcast -a eu.mrogalski.saidit.action.DUMP_RECORDING_RANGE --ef from_seconds_ago 1500.0 --ef to_seconds_ago 1200.0 --es filename "Slice_25_to_20"
+```
+
 ### Listening Control
 
 #### ENABLE_LISTENING
@@ -129,6 +152,8 @@ adb shell am broadcast -a eu.mrogalski.saidit.action.SET_MEMORY_SIZE --ei memory
 | `prepend_seconds` | float | Number of seconds to prepend/save from buffer |
 | `filename` | String | Custom filename for recordings (without .wav extension) |
 | `memory_size_mb` | int | Memory buffer size in megabytes |
+| `from_seconds_ago` | float | Start of export range (seconds ago) |
+| `to_seconds_ago` | float | End of export range (seconds ago) |
 
 ### Extra Type Flags (for adb)
 

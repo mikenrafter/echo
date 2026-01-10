@@ -198,6 +198,9 @@ public class SettingsActivity extends Activity {
         // Initialize auto-save controls
         initAutoSaveControls(root);
 
+        // Initialize export effects controls
+        initExportEffectsControls(root);
+
         //debugPrintCodecs();
 
         dialog.setDescriptionStringId(R.string.work_preparing_memory);
@@ -597,6 +600,38 @@ public class SettingsActivity extends Activity {
                 }
             }
         });
+    }
+
+    private void initExportEffectsControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+
+        final CheckBox normalizeEnabled = (CheckBox) root.findViewById(R.id.export_auto_normalize_enabled);
+        if (normalizeEnabled != null) {
+            normalizeEnabled.setChecked(prefs.getBoolean(SaidIt.EXPORT_AUTO_NORMALIZE_ENABLED_KEY, false));
+            normalizeEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.EXPORT_AUTO_NORMALIZE_ENABLED_KEY, isChecked).apply();
+                    Toast.makeText(SettingsActivity.this,
+                            isChecked ? "Export normalization enabled" : "Export normalization disabled",
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        final CheckBox noiseSuppressionEnabled = (CheckBox) root.findViewById(R.id.export_noise_suppression_enabled);
+        if (noiseSuppressionEnabled != null) {
+            noiseSuppressionEnabled.setChecked(prefs.getBoolean(SaidIt.EXPORT_NOISE_SUPPRESSION_ENABLED_KEY, false));
+            noiseSuppressionEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.EXPORT_NOISE_SUPPRESSION_ENABLED_KEY, isChecked).apply();
+                    Toast.makeText(SettingsActivity.this,
+                            isChecked ? "Noise suppression on export enabled" : "Noise suppression on export disabled",
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
     }
 
     private void applyActivityDetectionConfig(SharedPreferences prefs,
