@@ -70,8 +70,7 @@ public class SaidItFragment extends Fragment {
     private LinearLayout ready_section;
     private TextView history_limit;
     private TextView history_size;
-    private TextView history_size_title;
-    // Removed separate skipped seconds info; merged into skippedGroupsInfo
+    // Removed history_size_title - no longer displaying "memory holds the most recent"
     private TextView volumeMeterLabel;
     private int silenceThreshold = 500; // Default from settings
     private int silenceSegmentCount = 3; // Default from settings
@@ -192,8 +191,7 @@ public class SaidItFragment extends Fragment {
 
         history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
-        history_size_title = (TextView) rootView.findViewById(R.id.history_size_title);
-        // skipped_audio_info removed; combined display uses skipped_groups_info
+        // history_size_title removed
 
         history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
@@ -351,7 +349,6 @@ public class SaidItFragment extends Fragment {
             String memorizedText = String.format("%02d:%02d:%02d", hours, minutes, seconds);
             
             if (!history_size.getText().equals(memorizedText)) {
-                history_size_title.setText(R.string.history_size_title_hms);
                 history_size.setText(memorizedText);
             }
 
@@ -372,12 +369,14 @@ public class SaidItFragment extends Fragment {
                         if (volumeMeter != null) {
                             volumeMeter.setProgress(Math.max(0, Math.min(32767, volumeLevel)));
                         }
-                        // Update volume meter label based on silence threshold
-                        if (volumeMeterLabel != null) {
+                        // Update volume meter label and visibility based on silence threshold
+                        if (volumeMeterLabel != null && volumeMeter != null) {
                             if (volumeLevel < silenceThreshold) {
                                 volumeMeterLabel.setText("SILENT");
+                                volumeMeter.setVisibility(View.GONE);
                             } else {
                                 volumeMeterLabel.setText(R.string.volume_meter_label);
+                                volumeMeter.setVisibility(View.VISIBLE);
                             }
                         }
                         if (skippedGroupsInfo != null) {

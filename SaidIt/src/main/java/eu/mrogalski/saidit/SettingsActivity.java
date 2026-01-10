@@ -87,8 +87,22 @@ public class SettingsActivity extends Activity {
         ((Button) findViewById(R.id.memory_high)).setText(StringFormat.shortFileSize((long) (maxMemory * 0.90)));
 
 
-        TimeFormat.naturalLanguage(getResources(), service.getBytesToSeconds() * service.getMemorySize(), timeFormatResult);
-        ((TextView)findViewById(R.id.history_limit)).setText(timeFormatResult.text);
+        // Display memory info with ring breakdown if gradient is enabled
+        SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        boolean gradientEnabled = prefs.getBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, false);
+        
+        if (gradientEnabled) {
+            int highRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, 48000);
+            int midRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, 16000);
+            int lowRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
+            
+            String ringInfo = String.format("%d kHz: 0-5m, %d kHz: 5-20m, %d kHz: 20m+", 
+                highRate/1000, midRate/1000, lowRate/1000);
+            ((TextView)findViewById(R.id.history_limit)).setText(ringInfo);
+        } else {
+            TimeFormat.naturalLanguage(getResources(), service.getBytesToSeconds() * service.getMemorySize(), timeFormatResult);
+            ((TextView)findViewById(R.id.history_limit)).setText(timeFormatResult.text);
+        }
 
         highlightButtons();
     }

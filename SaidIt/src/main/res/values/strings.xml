@@ -178,6 +178,8 @@
     <string name="gradient_high_quality_label">High quality (first 5 minutes):</string>
     <string name="gradient_mid_quality_label">Mid quality (next 15 minutes):</string>
     <string name="gradient_low_quality_label">Low quality (everything after 20 minutes):</string>
+    <string name="gradient_ring_info_format">%1$d kHz: %2$s</string>
+    <string name="memory_ring_info">Memory rings allocated: %s</string>
 
     <!-- Others -->
 
