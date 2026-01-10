@@ -1,0 +1,5 @@
+Speech
+Music
+Background
+Noise
+Silence

@@ -40,6 +40,8 @@ import eu.mrogalski.saidit.ml.TfLiteClassifier;
 import eu.mrogalski.saidit.storage.RecordingStoreManager;
 import eu.mrogalski.saidit.storage.SimpleRecordingStoreManager;
 import eu.mrogalski.saidit.export.AacExporter;
+import simplesound.pcm.WavFileWriter;
+import simplesound.pcm.WavAudioFormat;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -469,7 +471,38 @@ public class SaidItService extends Service {
         public void exportRecording(final float memorySeconds, final String format, final WavFileReceiver wavFileReceiver, String newFileName) {
         if (state == ServiceState.READY) return;
 
-        analysisHandler.post(() -> recordingExporter.export(recordingStoreManager, memorySeconds, format, newFileName, wavFileReceiver));
+        analysisHandler.post(() -> {
+            File pcmFile = null;
+            File aacFile = null;
+            try {
+                final String fileName = (newFileName != null ? newFileName.replaceAll("[^a-zA-Z0-9.-]", "_") : "SaidIt_export");
+                final int bytesPerSecond = SAMPLE_RATE * 2; // 16-bit mono PCM
+                final int bytesToDump = (int) Math.max(0, memorySeconds * bytesPerSecond);
+
+                // Write memorized audio into a temporary WAV file
+                pcmFile = new File(getCacheDir(), fileName + ".wav");
+                WavFileWriter writer = new WavFileWriter(WavAudioFormat.wavFormat(SAMPLE_RATE, 16, 1), pcmFile);
+                audioMemory.dump((array, offset, count) -> { writer.write(array, offset, count); return count; }, bytesToDump);
+                writer.close();
+
+                if ("aac".equals(format)) {
+                    aacFile = new File(getCacheDir(), fileName + ".m4a");
+                    AacExporter.export(pcmFile, aacFile, SAMPLE_RATE, 1, 96000);
+                    recordingExporter.saveFileToMediaStore(aacFile, (newFileName != null ? newFileName : "SaidIt Recording") + ".m4a", "audio/mp4", wavFileReceiver);
+                } else {
+                    recordingExporter.saveFileToMediaStore(pcmFile, (newFileName != null ? newFileName : "SaidIt Recording") + ".wav", "audio/wav", wavFileReceiver);
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "ERROR exporting file from memory", e);
+                showToast(getString(R.string.error_saving_recording));
+                if (wavFileReceiver != null) {
+                    try { wavFileReceiver.onFailure(e); } catch (Exception ignored) {}
+                }
+            } finally {
+                try { if (pcmFile != null && pcmFile.exists()) pcmFile.delete(); } catch (Exception ignored) {}
+                try { if (aacFile != null && aacFile.exists()) aacFile.delete(); } catch (Exception ignored) {}
+            }
+        });
     }
 
     private void flushAudioRecord() {

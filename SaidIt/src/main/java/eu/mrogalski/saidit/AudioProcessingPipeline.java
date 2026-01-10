@@ -96,7 +96,13 @@ public class AudioProcessingPipeline {
             });
             
             audioClassifier = new AudioEventClassifier();
-            audioClassifier.load(context, "yamnet_tiny.tfile", "yamnet_tiny_labels.txt");
+            // Load model from existing asset file
+            try {
+                audioClassifier.load(context, "yamnet.tflite", "yamnet_tiny_labels.txt");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to load audio classifier model", e);
+                audioClassifier = null; // Disable classifier but keep recording functional
+            }
             
             isRunning.set(true);
         } catch (Exception e) {
