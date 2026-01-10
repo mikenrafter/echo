@@ -224,6 +224,165 @@
             android:layout_height="wrap_content"
             android:text="@string/audio_quality_description"/>
 
+                <!-- Gradient Quality Recording -->
+        <TextView
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_quality_label"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+
+        <CheckBox
+            android:id="@+id/gradient_quality_enabled"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:layout_marginTop="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_quality_enabled"/>
+
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:text="@string/gradient_quality_description"/>
+
+        <!-- High Quality (First 5 minutes) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_high_quality_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/gradient_high_8khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="8 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_high_16khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="16 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_high_48khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"
+                android:text="48 kHz"/>
+        </LinearLayout>
+
+        <!-- Mid Quality (Next 15 minutes) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_mid_quality_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/gradient_mid_8khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="8 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_mid_16khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="16 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_mid_48khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"
+                android:text="48 kHz"/>
+        </LinearLayout>
+
+        <!-- Low Quality (Everything after 20 minutes) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_low_quality_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/gradient_low_8khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="8 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_low_16khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="16 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_low_48khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"
+                android:text="48 kHz"/>
+        </LinearLayout>
+
         <!--
         <TextView
             android:layout_marginTop="20dp"
@@ -689,165 +848,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/activity_high_bitrate_label"/>
-
-        <!-- Gradient Quality Recording -->
-        <TextView
-            android:layout_marginTop="25dp"
-            android:layout_marginBottom="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_quality_label"
-            android:textSize="18sp"
-            android:textStyle="bold"/>
-
-        <CheckBox
-            android:id="@+id/gradient_quality_enabled"
-            android:layout_marginLeft="10dp"
-            android:layout_marginRight="10dp"
-            android:layout_marginTop="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_quality_enabled"/>
-
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/gradient_quality_description"/>
-
-        <!-- High Quality (First 5 minutes) -->
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_high_quality_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/gradient_high_8khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="8 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_high_16khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="16 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_high_48khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"
-                android:text="48 kHz"/>
-        </LinearLayout>
-
-        <!-- Mid Quality (Next 15 minutes) -->
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_mid_quality_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/gradient_mid_8khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="8 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_mid_16khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="16 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_mid_48khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"
-                android:text="48 kHz"/>
-        </LinearLayout>
-
-        <!-- Low Quality (Everything after 20 minutes) -->
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_low_quality_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginBottom="10dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/gradient_low_8khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="8 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_low_16khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="16 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_low_48khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"
-                android:text="48 kHz"/>
-        </LinearLayout>
 
         <!-- Auto-Save Settings -->
         <TextView
