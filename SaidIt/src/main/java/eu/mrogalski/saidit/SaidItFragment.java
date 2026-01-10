@@ -71,6 +71,9 @@ public class SaidItFragment extends Fragment {
     private TextView history_size;
     private TextView history_size_title;
     private TextView skipped_audio_info;
+    private TextView volumeMeterLabel;
+    private int silenceThreshold = 500; // Default from settings
+    private int silenceSegmentCount = 3; // Default from settings
 
     private LinearLayout rec_section;
     private TextView rec_indicator;
@@ -216,9 +219,15 @@ public class SaidItFragment extends Fragment {
         }
 
         volumeMeter = (ProgressBar) rootView.findViewById(R.id.volume_meter);
+        volumeMeterLabel = (TextView) rootView.findViewById(R.id.volume_meter_label);
         rangeHelpText = (TextView) rootView.findViewById(R.id.range_help_text);
         skippedGroupsInfo = (TextView) rootView.findViewById(R.id.skipped_groups_info);
         viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
+        
+        // Load silence threshold and segment count from preferences
+        android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+        silenceThreshold = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_THRESHOLD_KEY, 500);
+        silenceSegmentCount = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
 
         ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
         rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
@@ -332,11 +341,16 @@ public class SaidItFragment extends Fragment {
                 history_limit.setText(timeFormatResult.text);
             }
 
-            TimeFormat.naturalLanguage(resources, memorized, timeFormatResult);
-
-            if (!history_size.getText().equals(timeFormatResult.text)) {
-                history_size_title.setText(resources.getQuantityText(R.plurals.history_size_title, timeFormatResult.count));
-                history_size.setText(timeFormatResult.text);
+            // Format memorized time as hh:mm:ss
+            int memorizedSeconds = Math.round(memorized);
+            int hours = memorizedSeconds / 3600;
+            int minutes = (memorizedSeconds % 3600) / 60;
+            int seconds = memorizedSeconds % 60;
+            String memorizedText = String.format("%02d:%02d:%02d", hours, minutes, seconds);
+            
+            if (!history_size.getText().equals(memorizedText)) {
+                history_size_title.setText(R.string.history_size_title_hms);
+                history_size.setText(memorizedText);
             }
 
             TimeFormat.naturalLanguage(resources, recorded, timeFormatResult);
@@ -364,10 +378,23 @@ public class SaidItFragment extends Fragment {
                         if (volumeMeter != null) {
                             volumeMeter.setProgress(Math.max(0, Math.min(32767, volumeLevel)));
                         }
+                        // Update volume meter label based on silence threshold
+                        if (volumeMeterLabel != null) {
+                            if (volumeLevel < silenceThreshold) {
+                                volumeMeterLabel.setText("SILENT");
+                            } else {
+                                volumeMeterLabel.setText(R.string.volume_meter_label);
+                            }
+                        }
                         if (skippedGroupsInfo != null) {
-                            skippedGroupsInfo.setText(resources.getString(R.string.silence_skipped_groups_label, skippedGroups));
-                            skippedGroupsInfo.setVisibility(View.VISIBLE);
-                            if (viewSkippedSilenceButton != null) viewSkippedSilenceButton.setVisibility(View.VISIBLE);
+                            if (skippedGroups > 0) {
+                                skippedGroupsInfo.setText(resources.getString(R.string.silence_skipped_groups_label, skippedGroups));
+                                skippedGroupsInfo.setVisibility(View.VISIBLE);
+                                if (viewSkippedSilenceButton != null) viewSkippedSilenceButton.setVisibility(View.VISIBLE);
+                            } else {
+                                skippedGroupsInfo.setVisibility(View.GONE);
+                                if (viewSkippedSilenceButton != null) viewSkippedSilenceButton.setVisibility(View.GONE);
+                            }
                         }
                     }
                 });

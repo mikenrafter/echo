@@ -1,11 +1,14 @@
 package eu.mrogalski.saidit;
 
 import android.os.SystemClock;
+import android.util.Log;
 
 import java.io.IOException;
 import java.util.LinkedList;
 
 public class AudioMemory {
+
+    private static final String TAG = AudioMemory.class.getSimpleName();
 
     private final LinkedList<byte[]> filled = new LinkedList<byte[]>();
     private final LinkedList<byte[]> free = new LinkedList<byte[]>();
@@ -126,6 +129,7 @@ public class AudioMemory {
                 
                 if (silenceSkipEnabled && isSilent) {
                     consecutiveSilentSegments++;
+                    Log.d(TAG, "Silent chunk detected. consecutiveSilentSegments=" + consecutiveSilentSegments + ", needed=" + silenceSegmentCount);
                     
                     // If we have enough consecutive silent segments, overwrite in place
                     if (consecutiveSilentSegments >= silenceSegmentCount) {
@@ -156,7 +160,9 @@ public class AudioMemory {
                     if (insideSilentGroup) {
                         insideSilentGroup = false;
                         totalSkippedGroups++;
-                        silenceGroups.addLast(new SilenceGroupEntry(currentGroupSegments, SystemClock.uptimeMillis()));
+                        long endTime = System.currentTimeMillis();
+                        Log.d(TAG, "Silence group closed. segments=" + currentGroupSegments + ", totalGroups=" + totalSkippedGroups + ", endTime=" + endTime);
+                        silenceGroups.addLast(new SilenceGroupEntry(currentGroupSegments, endTime));
                         // Prevent unbounded growth: cap list size
                         if (silenceGroups.size() > 1000) {
                             silenceGroups.removeFirst();
@@ -203,6 +209,7 @@ public class AudioMemory {
         this.silenceThreshold = threshold;
         this.silenceSegmentCount = Math.max(1, segmentCount);
         this.consecutiveSilentSegments = 0;
+        Log.d(TAG, "Silence skipping configured: enabled=" + enabled + ", threshold=" + threshold + ", segmentCount=" + segmentCount);
         // Don't reset totalSkippedSegments - keep the running total
     }
     
@@ -231,6 +238,7 @@ public class AudioMemory {
     }
 
     public synchronized java.util.ArrayList<SilenceGroupEntry> getSilenceGroupsSnapshot() {
+        // Create a snapshot with current timestamps for pruning calculation
         return new java.util.ArrayList<>(silenceGroups);
     }
 

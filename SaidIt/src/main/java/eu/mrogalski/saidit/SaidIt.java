@@ -25,6 +25,14 @@ public class SaidIt {
     static final String SILENCE_SKIP_ENABLED_KEY = "silence_skip_enabled";
     static final String SILENCE_THRESHOLD_KEY = "silence_threshold";
     static final String SILENCE_SEGMENT_COUNT_KEY = "silence_segment_count"; // How many consecutive silent segments before skipping
+    
+    // Device audio recording
+    static final String RECORD_DEVICE_AUDIO_KEY = "record_device_audio";
+    
+    // Dual-source recording (mic + device audio simultaneously)
+    static final String DUAL_SOURCE_RECORDING_KEY = "dual_source_recording";
+    static final String MIC_CHANNEL_MODE_KEY = "mic_channel_mode"; // 0=mono, 1=stereo
+    static final String DEVICE_CHANNEL_MODE_KEY = "device_channel_mode"; // 0=mono, 1=stereo
     static final String TOTAL_SKIPPED_SECONDS_KEY = "total_skipped_seconds"; // Statistics: total seconds skipped
     
     // Auto-save configuration (records to Echo/AutoSave subfolder)

@@ -195,6 +195,12 @@ public class SettingsActivity extends Activity {
         // Initialize activity detection controls
         initActivityDetectionControls(root);
         
+        // Initialize device audio controls
+        initDeviceAudioControls(root);
+        
+        // Initialize dual-source controls
+        initDualSourceControls(root);
+        
         // Initialize auto-save controls
         initAutoSaveControls(root);
 
@@ -537,6 +543,101 @@ public class SettingsActivity extends Activity {
         preBufferInput.setOnFocusChangeListener(onBlurApply);
         postBufferInput.setOnFocusChangeListener(onBlurApply);
         autoDeleteInput.setOnFocusChangeListener(onBlurApply);
+    }
+
+    private void initDeviceAudioControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox deviceAudioEnabled = (CheckBox) root.findViewById(R.id.device_audio_enabled);
+        if (deviceAudioEnabled != null) {
+            deviceAudioEnabled.setChecked(prefs.getBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, false));
+            deviceAudioEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, isChecked).apply();
+                    if (service != null) {
+                        service.setDeviceAudioRecording(isChecked);
+                    }
+                    Toast.makeText(SettingsActivity.this,
+                        isChecked ? "Device audio recording enabled (restart listening)" : "Microphone recording enabled",
+                        Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+
+    private void initDualSourceControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox dualSourceEnabled = (CheckBox) root.findViewById(R.id.dual_source_enabled);
+        final Button micMono = (Button) root.findViewById(R.id.mic_channel_mono);
+        final Button micStereo = (Button) root.findViewById(R.id.mic_channel_stereo);
+        final Button deviceMono = (Button) root.findViewById(R.id.device_channel_mono);
+        final Button deviceStereo = (Button) root.findViewById(R.id.device_channel_stereo);
+        
+        if (dualSourceEnabled != null) {
+            dualSourceEnabled.setChecked(prefs.getBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, false));
+            dualSourceEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, isChecked).apply();
+                    if (service != null) {
+                        service.setDualSourceRecording(isChecked);
+                    }
+                    Toast.makeText(SettingsActivity.this,
+                        isChecked ? "Dual-source recording enabled (restart listening)" : "Single-source recording",
+                        Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+        
+        // Mic channel mode buttons
+        final int micMode = prefs.getInt(SaidIt.MIC_CHANNEL_MODE_KEY, 0);
+        if (micMono != null && micStereo != null) {
+            root.findViewById(R.id.mic_channel_mono).setBackgroundResource(micMode == 0 ? R.drawable.green_button : R.drawable.gray_button);
+            root.findViewById(R.id.mic_channel_stereo).setBackgroundResource(micMode == 1 ? R.drawable.green_button : R.drawable.gray_button);
+            
+            View.OnClickListener micChannelListener = new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    int mode = (v.getId() == R.id.mic_channel_mono) ? 0 : 1;
+                    prefs.edit().putInt(SaidIt.MIC_CHANNEL_MODE_KEY, mode).apply();
+                    root.findViewById(R.id.mic_channel_mono).setBackgroundResource(mode == 0 ? R.drawable.green_button : R.drawable.gray_button);
+                    root.findViewById(R.id.mic_channel_stereo).setBackgroundResource(mode == 1 ? R.drawable.green_button : R.drawable.gray_button);
+                    if (service != null) {
+                        service.setMicChannelMode(mode);
+                    }
+                    Toast.makeText(SettingsActivity.this,
+                        "Mic: " + (mode == 0 ? "Mono" : "Stereo"), Toast.LENGTH_SHORT).show();
+                }
+            };
+            micMono.setOnClickListener(micChannelListener);
+            micStereo.setOnClickListener(micChannelListener);
+        }
+        
+        // Device channel mode buttons
+        final int deviceMode = prefs.getInt(SaidIt.DEVICE_CHANNEL_MODE_KEY, 0);
+        if (deviceMono != null && deviceStereo != null) {
+            root.findViewById(R.id.device_channel_mono).setBackgroundResource(deviceMode == 0 ? R.drawable.green_button : R.drawable.gray_button);
+            root.findViewById(R.id.device_channel_stereo).setBackgroundResource(deviceMode == 1 ? R.drawable.green_button : R.drawable.gray_button);
+            
+            View.OnClickListener deviceChannelListener = new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    int mode = (v.getId() == R.id.device_channel_mono) ? 0 : 1;
+                    prefs.edit().putInt(SaidIt.DEVICE_CHANNEL_MODE_KEY, mode).apply();
+                    root.findViewById(R.id.device_channel_mono).setBackgroundResource(mode == 0 ? R.drawable.green_button : R.drawable.gray_button);
+                    root.findViewById(R.id.device_channel_stereo).setBackgroundResource(mode == 1 ? R.drawable.green_button : R.drawable.gray_button);
+                    if (service != null) {
+                        service.setDeviceChannelMode(mode);
+                    }
+                    Toast.makeText(SettingsActivity.this,
+                        "Device: " + (mode == 0 ? "Mono" : "Stereo"), Toast.LENGTH_SHORT).show();
+                }
+            };
+            deviceMono.setOnClickListener(deviceChannelListener);
+            deviceStereo.setOnClickListener(deviceChannelListener);
+        }
     }
     
     private void initAutoSaveControls(View root) {

@@ -22,9 +22,22 @@ This document tracks the detailed implementation tasks for enhancing Echo with a
 ### ⏳ Not Started
 - **Phase 4: Multi-Quality Encoding** - Planned but not implemented
 - **Phase 5: Dual-Channel Audio Capture** - Planned but high complexity due to Android limitations
- - **Skipped Silence Details**
+- **Phase 8: Advanced Multi-Source Recording** - Simultaneous mic + device audio with channel control
+  - [ ] Record both microphone and device audio simultaneously
+  - [ ] Mix into stereo output (mic on one channel, device audio on other)
+  - [ ] Independent mono/stereo control for each source
+  - [ ] Proper synchronization and buffer management
+  - [ ] Two AudioRecord instances with different sources
+  - [ ] Channel routing configuration in settings
+- **Skipped Silence Details**
    - [ ] Persist silence groups beyond memory window (optional)
    - [ ] Add share/export for silence logs (optional)
+- **Device Audio Recording** - Basic implementation in progress
+  - [x] Add permission CAPTURE_AUDIO_OUTPUT
+  - [x] Add settings toggle for device audio
+  - [x] Service uses REMOTE_SUBMIX when enabled
+  - [ ] Complete setDeviceAudioRecording method
+  - [ ] Test on device (limitations apply)
 
 ---
 

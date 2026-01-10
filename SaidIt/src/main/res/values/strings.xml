@@ -28,6 +28,7 @@
     <plurals name="history_size_title">
         <item quantity="other">Memory holds the most recent</item>
     </plurals>
+    <string name="history_size_title_hms">Memory holds the most recent</string>
 
     <plurals name="minute">
         <item quantity="one">%d minute</item>
@@ -133,6 +134,16 @@
     <string name="silence_skipped_groups_label">Silent groups skipped: %1$d</string>
     <string name="view_skipped_silence">View skipped silence log</string>
     <string name="volume_meter_label">Live volume</string>
+    <string name="device_audio_label">Device Audio Recording</string>
+    <string name="device_audio_enabled">Record device audio (system/app sounds)</string>
+    <string name="device_audio_description">Records internal audio instead of microphone. Limitations: Requires Android 10+, may not work on all devices, some apps block audio capture, DRM-protected content excluded. Root or special ROM may be required.</string>
+    <string name="dual_source_label">Dual-Source Recording (Advanced)</string>
+    <string name="dual_source_enabled">Record mic + device audio simultaneously</string>
+    <string name="dual_source_description">Records both microphone and device audio at the same time, mixing into stereo channels. Mic on left, device audio on right (or configurable). High CPU/memory usage.</string>
+    <string name="mic_channel_label">Microphone channel:</string>
+    <string name="device_channel_label">Device audio channel:</string>
+    <string name="channel_mono">Mono</string>
+    <string name="channel_stereo">Stereo</string>
     <string name="auto_save_label">Auto-Save</string>
     <string name="auto_save_enabled">Enable auto-save</string>
     <string name="auto_save_description">Automatically save recordings at regular intervals.</string>

@@ -47,10 +47,15 @@ public class SaidItService extends Service {
 
     File wavFile;
     AudioRecord audioRecord; // used only in the audio thread
+    AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode
     WavFileWriter wavFileWriter; // used only in the audio thread
     final AudioMemory audioMemory = new AudioMemory(); // used only in the audio thread
     DiskAudioBuffer diskAudioBuffer; // used only in the audio thread
     volatile StorageMode storageMode = StorageMode.MEMORY_ONLY;
+    volatile boolean recordDeviceAudio = false; // If true, use REMOTE_SUBMIX instead of MIC
+    volatile boolean dualSourceRecording = false; // If true, record both MIC and REMOTE_SUBMIX simultaneously
+    volatile int micChannelMode = 0; // 0=mono, 1=stereo
+    volatile int deviceChannelMode = 0; // 0=mono, 1=stereo
     
     // Voice Activity Detection (VAD) - Records to Echo/VAD subfolder
     volatile boolean activityDetectionEnabled = false;
@@ -129,6 +134,16 @@ public class SaidItService extends Service {
         
         // Initialize auto-save auto-delete configuration
         autoSaveAutoDeleteDays = preferences.getInt(AUTO_SAVE_AUTO_DELETE_DAYS_KEY, 7);
+        
+        // Load device audio recording preference
+        recordDeviceAudio = preferences.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);
+        Log.d(TAG, "Device audio recording: " + recordDeviceAudio);
+        
+        // Load dual-source recording preferences
+        dualSourceRecording = preferences.getBoolean(DUAL_SOURCE_RECORDING_KEY, false);
+        micChannelMode = preferences.getInt(MIC_CHANNEL_MODE_KEY, 0);
+        deviceChannelMode = preferences.getInt(DEVICE_CHANNEL_MODE_KEY, 0);
+        Log.d(TAG, "Dual-source recording: " + dualSourceRecording + ", micMode=" + micChannelMode + ", deviceMode=" + deviceChannelMode);
 
         audioThread = new HandlerThread("audioThread", Thread.MAX_PRIORITY);
         audioThread.start();
@@ -200,19 +215,63 @@ public class SaidItService extends Service {
                 Log.d(TAG, "Executing: START LISTENING");
                 Log.d(TAG, "Audio: INITIALIZING AUDIO_RECORD");
 
-                audioRecord = new AudioRecord(
-                       MediaRecorder.AudioSource.MIC,
-                       SAMPLE_RATE,
-                       AudioFormat.CHANNEL_IN_MONO,
-                       AudioFormat.ENCODING_PCM_16BIT,
-                       AudioMemory.CHUNK_SIZE);
+                if (dualSourceRecording) {
+                    // Dual-source mode: Initialize both MIC and REMOTE_SUBMIX
+                    Log.d(TAG, "Initializing DUAL-SOURCE recording (MIC + REMOTE_SUBMIX)");
+                    
+                    // Microphone
+                    audioRecord = new AudioRecord(
+                           MediaRecorder.AudioSource.MIC,
+                           SAMPLE_RATE,
+                           micChannelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
+                           AudioFormat.ENCODING_PCM_16BIT,
+                           AudioMemory.CHUNK_SIZE);
+                    
+                    if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                        Log.e(TAG, "Audio: MIC INITIALIZATION ERROR - releasing resources");
+                        audioRecord.release();
+                        audioRecord = null;
+                        state = STATE_READY;
+                        return;
+                    }
+                    
+                    // Device audio
+                    deviceAudioRecord = new AudioRecord(
+                           MediaRecorder.AudioSource.REMOTE_SUBMIX,
+                           SAMPLE_RATE,
+                           deviceChannelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
+                           AudioFormat.ENCODING_PCM_16BIT,
+                           AudioMemory.CHUNK_SIZE);
+                    
+                    if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                        Log.e(TAG, "Audio: REMOTE_SUBMIX INITIALIZATION ERROR - falling back to single source");
+                        deviceAudioRecord.release();
+                        deviceAudioRecord = null;
+                        // Continue with just microphone
+                    }
+                    
+                    Log.d(TAG, "Dual-source initialized: MIC=" + (audioRecord != null) + ", DEVICE=" + (deviceAudioRecord != null));
+                } else {
+                    // Single-source mode
+                    int audioSource = recordDeviceAudio ? 
+                        MediaRecorder.AudioSource.REMOTE_SUBMIX : 
+                        MediaRecorder.AudioSource.MIC;
+                    Log.d(TAG, "Using audio source: " + (recordDeviceAudio ? "REMOTE_SUBMIX (device audio)" : "MIC"));
 
-                if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                    Log.e(TAG, "Audio: INITIALIZATION ERROR - releasing resources");
-                    audioRecord.release();
-                    audioRecord = null;
-                    state = STATE_READY;
-                    return;
+                    audioRecord = new AudioRecord(
+                           audioSource,
+                           SAMPLE_RATE,
+                           AudioFormat.CHANNEL_IN_MONO,
+                           AudioFormat.ENCODING_PCM_16BIT,
+                           AudioMemory.CHUNK_SIZE);
+
+                    if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                        Log.e(TAG, "Audio: INITIALIZATION ERROR - releasing resources");
+                        audioRecord.release();
+                        audioRecord = null;
+                        state = STATE_READY;
+                        return;
+                    }
                 }
 
                 Log.d(TAG, "Audio: STARTING AudioRecord");
@@ -225,6 +284,9 @@ public class SaidItService extends Service {
 
                 Log.d(TAG, "Audio: STARTING AudioRecord");
                 audioRecord.startRecording();
+                if (deviceAudioRecord != null) {
+                    deviceAudioRecord.startRecording();
+                }
                 audioHandler.post(audioReader);
             }
         });
@@ -260,6 +322,10 @@ public class SaidItService extends Service {
                 Log.d(TAG, "Executing: STOP LISTENING");
                 if(audioRecord != null)
                     audioRecord.release();
+                if(deviceAudioRecord != null) {
+                    deviceAudioRecord.release();
+                    deviceAudioRecord = null;
+                }
                 audioHandler.removeCallbacks(audioReader);
                 audioMemory.allocate(0);
                 
@@ -637,6 +703,39 @@ public class SaidItService extends Service {
     }
 
     /**
+     * Enable or disable device audio recording (REMOTE_SUBMIX).
+     * Requires restart of listening to take effect.
+     * @param enabled If true, record device audio; if false, record microphone
+     */
+    public void setDeviceAudioRecording(final boolean enabled) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit().putBoolean(RECORD_DEVICE_AUDIO_KEY, enabled).apply();
+        recordDeviceAudio = enabled;
+        Log.d(TAG, "Device audio recording set to: " + enabled + " (restart listening to apply)");
+    }
+
+    public void setDualSourceRecording(final boolean enabled) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit().putBoolean(DUAL_SOURCE_RECORDING_KEY, enabled).apply();
+        dualSourceRecording = enabled;
+        Log.d(TAG, "Dual-source recording set to: " + enabled + " (restart listening to apply)");
+    }
+
+    public void setMicChannelMode(final int mode) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit().putInt(MIC_CHANNEL_MODE_KEY, mode).apply();
+        micChannelMode = mode;
+        Log.d(TAG, "Mic channel mode set to: " + (mode == 0 ? "mono" : "stereo") + " (restart listening to apply)");
+    }
+
+    public void setDeviceChannelMode(final int mode) {
+        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        preferences.edit().putInt(DEVICE_CHANNEL_MODE_KEY, mode).apply();
+        deviceChannelMode = mode;
+        Log.d(TAG, "Device channel mode set to: " + (mode == 0 ? "mono" : "stereo") + " (restart listening to apply)");
+    }
+
+    /**
      * Configure voice activity detection and activity recording parameters.
      */
     public void configureActivityDetection(final boolean enabled, final float threshold,
@@ -737,23 +836,119 @@ public class SaidItService extends Service {
         audioReader.run();
     }
 
+    /**
+     * Read from both mic and device audio sources and mix them into stereo output.
+     * Output is always stereo (2 channels): Left channel = mic, Right channel = device audio
+     * Each source can be mono or stereo independently.
+     * 
+     * @param array Output buffer (stereo interleaved: L,R,L,R,...)
+     * @param offset Offset in output buffer
+     * @param count Number of bytes to read (must be even, stereo 16-bit samples)
+     * @return Number of bytes written to output buffer
+     */
+    private int readAndMixDualSource(byte[] array, int offset, int count) {
+        // Temporary buffers for each source
+        // Output is stereo, so count bytes = count/4 stereo frames
+        int stereoFrames = count / 4; // Each stereo frame = 4 bytes (2 samples x 2 bytes each)
+        
+        // Calculate input buffer sizes based on channel modes
+        int micBytesNeeded = (micChannelMode == 0) ? stereoFrames * 2 : stereoFrames * 4; // mono: 2 bytes/frame, stereo: 4 bytes/frame
+        int deviceBytesNeeded = (deviceChannelMode == 0) ? stereoFrames * 2 : stereoFrames * 4;
+        
+        byte[] micBuffer = new byte[micBytesNeeded];
+        byte[] deviceBuffer = new byte[deviceBytesNeeded];
+        
+        // Read from both sources
+        int micRead = audioRecord.read(micBuffer, 0, micBytesNeeded, AudioRecord.READ_NON_BLOCKING);
+        int deviceRead = deviceAudioRecord.read(deviceBuffer, 0, deviceBytesNeeded, AudioRecord.READ_NON_BLOCKING);
+        
+        // Handle read errors
+        if (micRead < 0) {
+            Log.e(TAG, "MIC AUDIO RECORD ERROR: " + micRead);
+            micRead = 0;
+        }
+        if (deviceRead < 0) {
+            Log.e(TAG, "DEVICE AUDIO RECORD ERROR: " + deviceRead);
+            deviceRead = 0;
+        }
+        
+        // Calculate how many complete stereo frames we can produce
+        int micFrames = (micChannelMode == 0) ? micRead / 2 : micRead / 4;
+        int deviceFrames = (deviceChannelMode == 0) ? deviceRead / 2 : deviceRead / 4;
+        int outputFrames = Math.min(micFrames, deviceFrames);
+        outputFrames = Math.min(outputFrames, stereoFrames);
+        
+        // Mix samples into output buffer
+        int outIdx = offset;
+        for (int frame = 0; frame < outputFrames; frame++) {
+            // Get mic sample (left channel)
+            short micSample;
+            if (micChannelMode == 0) {
+                // Mono: use the single channel
+                int idx = frame * 2;
+                int lo = micBuffer[idx] & 0xff;
+                int hi = micBuffer[idx + 1];
+                micSample = (short)((hi << 8) | lo);
+            } else {
+                // Stereo: use left channel (or could mix both)
+                int idx = frame * 4;
+                int lo = micBuffer[idx] & 0xff;
+                int hi = micBuffer[idx + 1];
+                micSample = (short)((hi << 8) | lo);
+            }
+            
+            // Get device sample (right channel)
+            short deviceSample;
+            if (deviceChannelMode == 0) {
+                // Mono: use the single channel
+                int idx = frame * 2;
+                int lo = deviceBuffer[idx] & 0xff;
+                int hi = deviceBuffer[idx + 1];
+                deviceSample = (short)((hi << 8) | lo);
+            } else {
+                // Stereo: use left channel (or could mix both)
+                int idx = frame * 4;
+                int lo = deviceBuffer[idx] & 0xff;
+                int hi = deviceBuffer[idx + 1];
+                deviceSample = (short)((hi << 8) | lo);
+            }
+            
+            // Write to output: Left = mic, Right = device
+            array[outIdx++] = (byte)(micSample & 0xff);
+            array[outIdx++] = (byte)((micSample >> 8) & 0xff);
+            array[outIdx++] = (byte)(deviceSample & 0xff);
+            array[outIdx++] = (byte)((deviceSample >> 8) & 0xff);
+        }
+        
+        return outputFrames * 4; // Return bytes written
+    }
+
     final AudioMemory.Consumer filler = new AudioMemory.Consumer() {
         @Override
         public int consume(final byte[] array, final int offset, final int count) throws IOException {
 //            Log.d(TAG, "READING " + count + " B");
-            final int read = audioRecord.read(array, offset, count, AudioRecord.READ_NON_BLOCKING);
-            if (read == AudioRecord.ERROR_BAD_VALUE) {
-                Log.e(TAG, "AUDIO RECORD ERROR - BAD VALUE");
-                return 0;
+            
+            int read;
+            if (dualSourceRecording && deviceAudioRecord != null) {
+                // Dual-source mode: read from both sources and mix into stereo
+                read = readAndMixDualSource(array, offset, count);
+            } else {
+                // Single-source mode: read from primary audioRecord
+                read = audioRecord.read(array, offset, count, AudioRecord.READ_NON_BLOCKING);
+                if (read == AudioRecord.ERROR_BAD_VALUE) {
+                    Log.e(TAG, "AUDIO RECORD ERROR - BAD VALUE");
+                    return 0;
+                }
+                if (read == AudioRecord.ERROR_INVALID_OPERATION) {
+                    Log.e(TAG, "AUDIO RECORD ERROR - INVALID OPERATION");
+                    return 0;
+                }
+                if (read == AudioRecord.ERROR) {
+                    Log.e(TAG, "AUDIO RECORD ERROR - UNKNOWN ERROR");
+                    return 0;
+                }
             }
-            if (read == AudioRecord.ERROR_INVALID_OPERATION) {
-                Log.e(TAG, "AUDIO RECORD ERROR - INVALID OPERATION");
-                return 0;
-            }
-            if (read == AudioRecord.ERROR) {
-                Log.e(TAG, "AUDIO RECORD ERROR - UNKNOWN ERROR");
-                return 0;
-            }
+            
             // Compute live volume (peak) for this buffer
             if (read > 0) {
                 int max = 0;
@@ -907,6 +1102,7 @@ public class SaidItService extends Service {
             public void run() {
                 final int volume = currentVolumeLevel;
                 final int groups = audioMemory.getSkippedGroupsCount();
+                Log.d(TAG, "getLiveStats: volume=" + volume + ", groups=" + groups);
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
@@ -931,6 +1127,7 @@ public class SaidItService extends Service {
                 java.util.ArrayList<AudioMemory.SilenceGroupEntry> entries = audioMemory.getSilenceGroupsSnapshot();
                 java.util.ArrayList<SilenceGroup> snapshot = new java.util.ArrayList<>(entries.size());
                 long segmentMillis = (long)(AudioMemory.CHUNK_SIZE * getBytesToSeconds() * 1000);
+                Log.d(TAG, "getSilenceGroups: rawEntries=" + entries.size() + ", segmentMillis=" + segmentMillis);
                 for (AudioMemory.SilenceGroupEntry e : entries) {
                     long duration = segmentMillis * e.segments;
                     snapshot.add(new SilenceGroup(e.endTimeMillis, duration));
@@ -939,11 +1136,13 @@ public class SaidItService extends Service {
                 int bytesAvailable = audioMemory.countFilled();
                 long memorySpanMillis = (long)(bytesAvailable * getBytesToSeconds() * 1000);
                 long cutoff = System.currentTimeMillis() - memorySpanMillis;
+                Log.d(TAG, "Pruning: memorySpanMillis=" + memorySpanMillis + ", cutoff=" + cutoff + ", beforePrune=" + snapshot.size());
                 java.util.Iterator<SilenceGroup> it = snapshot.iterator();
                 while (it.hasNext()) {
                     SilenceGroup g = it.next();
                     if (g.endTimeMillis < cutoff) it.remove();
                 }
+                Log.d(TAG, "After pruning: groups=" + snapshot.size());
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
