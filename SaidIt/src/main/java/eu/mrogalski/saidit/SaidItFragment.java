@@ -428,6 +428,9 @@ public class SaidItFragment extends Fragment {
                                 crashLogsInfo.setVisibility(View.GONE);
                             }
                         }
+                        
+                        // Update activity/silence timeline display
+                        updateTimelineDisplay();
                     }
                 });
             }
@@ -435,6 +438,183 @@ public class SaidItFragment extends Fragment {
             history_size.postOnAnimationDelayed(updater, 100);
         }
     };
+    
+    // Update the activity/silence timeline display
+    private void updateTimelineDisplay() {
+        if (echo == null || activityTimeline == null || activityTimelineContainer == null) return;
+        
+        echo.getTimeline(new SaidItService.TimelineCallback() {
+            @Override
+            public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment) {
+                final Activity activity = getActivity();
+                if (activity == null) return;
+                
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        // Clear existing timeline
+                        activityTimeline.removeAllViews();
+                        
+                        // Only show timeline if we have segments or a current segment
+                        if ((segments == null || segments.isEmpty()) && currentSegment == null) {
+                            activityTimelineContainer.setVisibility(View.GONE);
+                            return;
+                        }
+                        
+                        activityTimelineContainer.setVisibility(View.VISIBLE);
+                        
+                        // Count silence segments to determine if we should show save buttons
+                        int silenceCount = 0;
+                        if (segments != null) {
+                            for (SaidItService.TimelineSegment seg : segments) {
+                                if (seg.type == SaidItService.TimelineSegment.Type.SILENCE) {
+                                    silenceCount++;
+                                }
+                            }
+                        }
+                        
+                        // Display current segment first if it exists and is activity
+                        if (currentSegment != null && currentSegment.type == SaidItService.TimelineSegment.Type.ACTIVITY) {
+                            addCurrentActivityView(currentSegment);
+                        } else if (currentSegment != null && currentSegment.type == SaidItService.TimelineSegment.Type.SILENCE) {
+                            addSilenceView(currentSegment, true);
+                        }
+                        
+                        // Display historical segments in reverse order (newest first)
+                        if (segments != null && !segments.isEmpty()) {
+                            for (int i = segments.size() - 1; i >= 0; i--) {
+                                SaidItService.TimelineSegment seg = segments.get(i);
+                                if (seg.type == SaidItService.TimelineSegment.Type.ACTIVITY) {
+                                    addActivityView(seg, i, silenceCount > 0);
+                                } else {
+                                    addSilenceView(seg, false);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+    
+    // Add a view for the current activity segment
+    private void addCurrentActivityView(SaidItService.TimelineSegment segment) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        LinearLayout segmentLayout = new LinearLayout(activity);
+        segmentLayout.setOrientation(LinearLayout.HORIZONTAL);
+        segmentLayout.setPadding(10, 5, 10, 5);
+        
+        TextView textView = new TextView(activity);
+        int duration = segment.getCurrentDuration();
+        String durationStr = formatDuration(duration);
+        textView.setText(String.format("Activity: %s [RECORDING]", durationStr));
+        textView.setTextSize(14);
+        textView.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        
+        segmentLayout.addView(textView);
+        activityTimeline.addView(segmentLayout);
+    }
+    
+    // Add a view for a historical activity segment
+    private void addActivityView(final SaidItService.TimelineSegment segment, final int index, boolean showSaveButton) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        LinearLayout segmentLayout = new LinearLayout(activity);
+        segmentLayout.setOrientation(LinearLayout.HORIZONTAL);
+        segmentLayout.setPadding(10, 5, 10, 5);
+        
+        TextView textView = new TextView(activity);
+        String durationStr = formatDuration(segment.durationSeconds);
+        textView.setText(String.format("Activity: %s", durationStr));
+        textView.setTextSize(14);
+        textView.setLayoutParams(new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1.0f
+        ));
+        
+        segmentLayout.addView(textView);
+        
+        if (showSaveButton) {
+            Button saveButton = new Button(activity);
+            saveButton.setText(R.string.save_from_here);
+            saveButton.setTextSize(12);
+            saveButton.setPadding(20, 10, 20, 10);
+            saveButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    handleTimelineSegmentSelection(segment, index);
+                }
+            });
+            
+            segmentLayout.addView(saveButton);
+        }
+        
+        activityTimeline.addView(segmentLayout);
+    }
+    
+    // Add a view for a silence segment
+    private void addSilenceView(SaidItService.TimelineSegment segment, boolean isCurrent) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        TextView textView = new TextView(activity);
+        int duration = isCurrent ? segment.getCurrentDuration() : segment.durationSeconds;
+        String durationStr = formatDuration(duration);
+        String label = isCurrent ? String.format("Silence: %s [CURRENT]", durationStr) : String.format("Silence: %s", durationStr);
+        textView.setText(label);
+        textView.setTextSize(14);
+        textView.setPadding(10, 5, 10, 5);
+        textView.setTextColor(0xFF888888);
+        
+        activityTimeline.addView(textView);
+    }
+    
+    // Handle selection of a timeline segment for save range
+    private void handleTimelineSegmentSelection(SaidItService.TimelineSegment segment, int index) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        if (selectedFrom == null) {
+            // First selection - set FROM
+            selectedFrom = new TimelineSegmentSelection(segment, index);
+            Toast.makeText(activity, "FROM selected. Now select TO.", Toast.LENGTH_SHORT).show();
+            // Update button text to "save to here"
+            updateTimelineDisplay(); // Refresh to show new button states
+        } else if (selectedTo == null) {
+            // Second selection - set TO
+            selectedTo = new TimelineSegmentSelection(segment, index);
+            
+            // Validate and initiate save
+            initiateRangeSave();
+            
+            // Reset selection
+            selectedFrom = null;
+            selectedTo = null;
+            updateTimelineDisplay(); // Refresh to show original button states
+        }
+    }
+    
+    // Initiate save of selected range
+    private void initiateRangeSave() {
+        // TODO: Implement range save logic
+        // For now, just show a toast
+        Toast.makeText(getActivity(), "Range save not yet implemented", Toast.LENGTH_SHORT).show();
+    }
+    
+    // Format duration in seconds to HH:MM:SS
+    private String formatDuration(int seconds) {
+        int hours = seconds / 3600;
+        int minutes = (seconds % 3600) / 60;
+        int secs = seconds % 60;
+        return String.format("%02d:%02d:%02d", hours, minutes, secs);
+    }
 
     final TimeFormat.Result timeFormatResult = new TimeFormat.Result();
 
