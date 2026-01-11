@@ -154,13 +154,13 @@ public class SettingsActivity extends Activity {
             final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
             
             if (resultCode == RESULT_OK && data != null) {
-                // User granted permission
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaProjectionManager != null) {
-                    MediaProjection mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data);
+                // User granted permission - pass to service to create MediaProjection
+                // This must be done in the service context since Android 14+ requires
+                // MediaProjection to be created in a foreground service with MEDIA_PROJECTION type
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && service != null) {
+                    boolean success = service.initializeMediaProjection(resultCode, data);
                     
-                    if (service != null && mediaProjection != null) {
-                        service.setMediaProjection(mediaProjection);
-                        
+                    if (success) {
                         if (isDualSource) {
                             prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, true).apply();
                             service.setDualSourceRecording(true);
@@ -180,6 +180,16 @@ public class SettingsActivity extends Activity {
                                 "Device audio recording enabled (restart listening to apply)",
                                 Toast.LENGTH_LONG).show();
                         }
+                    } else {
+                        // Failed to initialize MediaProjection
+                        if (isDualSource && dualSourceEnabled != null) {
+                            dualSourceEnabled.setChecked(false);
+                        } else if (deviceAudioEnabled != null) {
+                            deviceAudioEnabled.setChecked(false);
+                        }
+                        Toast.makeText(this,
+                            "Failed to initialize screen recording. Please try again.",
+                            Toast.LENGTH_LONG).show();
                     }
                 }
             } else {

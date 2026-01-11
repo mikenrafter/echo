@@ -16,7 +16,9 @@ import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
 import android.media.AudioPlaybackCaptureConfiguration;
+import android.content.Context;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Environment;
@@ -51,6 +53,7 @@ public class SaidItService extends Service {
     AudioRecord audioRecord; // used only in the audio thread
     AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode (uses MediaProjection)
     MediaProjection mediaProjection; // For capturing device audio via AudioPlaybackCapture API
+    MediaProjectionManager mediaProjectionManager; // For creating MediaProjection in service context
     WavFileWriter wavFileWriter; // used only in the audio thread
     
     // Gradient quality: three separate memory rings for different quality tiers
@@ -197,6 +200,11 @@ public class SaidItService extends Service {
         gradientQualityLowRate = preferences.getInt(GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
         Log.d(TAG, "Gradient quality: enabled=" + gradientQualityEnabled + 
             ", rates=" + gradientQualityHighRate + "/" + gradientQualityMidRate + "/" + gradientQualityLowRate);
+        
+        // Initialize MediaProjectionManager for creating MediaProjection in service context
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+        }
         
         // Load device audio recording preference
         recordDeviceAudio = preferences.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);
@@ -662,6 +670,19 @@ public class SaidItService extends Service {
     }
 
     public void startRecording(final float prependedMemorySeconds) {
+        // Check if MediaProjection is required but not yet initialized
+        if (isMediaProjectionRequired()) {
+            Log.d(TAG, "MediaProjection required but not initialized - requesting permission");
+            if (mediaProjectionRequestCallback != null) {
+                mediaProjectionRequestCallback.onRequestMediaProjection();
+                // The callback will request the permission, and once granted,
+                // the activity will initialize MediaProjection and call this method again
+                return;
+            } else {
+                Log.w(TAG, "MediaProjection required but no callback set to request it");
+            }
+        }
+
         switch(state) {
             case STATE_READY:
                 innerStartListening();
@@ -912,13 +933,83 @@ public class SaidItService extends Service {
     }
 
     /**
+     * Initialize MediaProjection from the result of a MediaProjection permission request.
+     * This method creates the MediaProjection in the service context, which is required
+     * for Android 14+ (API 34+) where MediaProjection must be created in a foreground
+     * service with FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION.
+     * 
+     * @param resultCode The result code from onActivityResult
+     * @param data The Intent data from onActivityResult containing the MediaProjection token
+     * @return true if MediaProjection was successfully initialized, false otherwise
+     */
+    public boolean initializeMediaProjection(int resultCode, Intent data) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaProjectionManager != null) {
+            try {
+                // For Android 14+ (API 34+), MUST update foreground service type to include MEDIA_PROJECTION
+                // BEFORE calling getMediaProjection(). The Android system checks the foreground service type
+                // at the time MediaProjection is created and throws SecurityException if not properly declared.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE | 
+                                                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+                    try {
+                        startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceType);
+                        Log.d(TAG, "Updated foreground service type to include MEDIA_PROJECTION");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to update foreground service type before MediaProjection init", e);
+                        return false;
+                    }
+                }
+                
+                // Now create the MediaProjection with the proper foreground service type already in place
+                MediaProjection projection = mediaProjectionManager.getMediaProjection(resultCode, data);
+                if (projection != null) {
+                    this.mediaProjection = projection;
+                    Log.d(TAG, "MediaProjection initialized in service context - device audio capture is now available");
+                    return true;
+                } else {
+                    Log.e(TAG, "Failed to initialize MediaProjection - projection is null");
+                    return false;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to initialize MediaProjection", e);
+                return false;
+            }
+        } else {
+            Log.e(TAG, "Cannot initialize MediaProjection - MediaProjectionManager not available");
+            return false;
+        }
+    }
+
+    /**
+     * Check if MediaProjection is required for the current audio configuration.
+     * Returns true if device audio or dual-source recording is enabled but MediaProjection is not yet initialized.
+     * 
+     * @return true if MediaProjection needs to be requested, false otherwise
+     */
+    public boolean isMediaProjectionRequired() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return false; // AudioPlaybackCapture requires Android 10+
+        }
+        
+        final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        final boolean deviceAudioEnabled = prefs.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);
+        final boolean dualSourceEnabled = prefs.getBoolean(DUAL_SOURCE_RECORDING_KEY, false);
+        
+        if ((deviceAudioEnabled || dualSourceEnabled) && mediaProjection == null) {
+            Log.d(TAG, "MediaProjection required but not initialized - device audio=" + deviceAudioEnabled + ", dual-source=" + dualSourceEnabled);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Set the MediaProjection instance for device audio capture.
      * This must be called before starting recording if device audio capture is enabled.
-     * The MediaProjection should be obtained from MediaProjectionManager.getMediaProjection()
-     * after the user grants permission via startActivityForResult with MediaProjectionManager.createScreenCaptureIntent().
      * 
-     * @param projection The MediaProjection instance obtained from user consent, or null to clear
+     * @param projection The MediaProjection instance, or null to clear
+     * @deprecated Use initializeMediaProjection(int, Intent) instead to properly handle Android 14+ requirements
      */
+    @Deprecated
     public void setMediaProjection(MediaProjection projection) {
         this.mediaProjection = projection;
         if (projection != null) {
@@ -1033,6 +1124,7 @@ public class SaidItService extends Service {
      * Read from both mic and device audio sources and mix them into stereo output.
      * Output is always stereo (2 channels): Left channel = mic, Right channel = device audio
      * Each source can be mono or stereo independently.
+     * If one source has no data available, silence is used for that channel.
      * 
      * @param array Output buffer (stereo interleaved: L,R,L,R,...)
      * @param offset Offset in output buffer
@@ -1053,7 +1145,7 @@ public class SaidItService extends Service {
         
         // Read from both sources
         int micRead = audioRecord.read(micBuffer, 0, micBytesNeeded, AudioRecord.READ_NON_BLOCKING);
-        int deviceRead = deviceAudioRecord.read(deviceBuffer, 0, deviceBytesNeeded, AudioRecord.READ_NON_BLOCKING);
+        int deviceRead = (deviceAudioRecord != null) ? deviceAudioRecord.read(deviceBuffer, 0, deviceBytesNeeded, AudioRecord.READ_NON_BLOCKING) : 0;
         
         // Handle read errors
         if (micRead < 0) {
@@ -1065,45 +1157,56 @@ public class SaidItService extends Service {
             deviceRead = 0;
         }
         
-        // Calculate how many complete stereo frames we can produce
-        int micFrames = (micChannelMode == 0) ? micRead / 2 : micRead / 4;
-        int deviceFrames = (deviceChannelMode == 0) ? deviceRead / 2 : deviceRead / 4;
-        int outputFrames = Math.min(micFrames, deviceFrames);
+        // Calculate how many frames we have from each source
+        int micFrames = (micRead > 0) ? ((micChannelMode == 0) ? micRead / 2 : micRead / 4) : 0;
+        int deviceFrames = (deviceRead > 0) ? ((deviceChannelMode == 0) ? deviceRead / 2 : deviceRead / 4) : 0;
+        
+        // Use the maximum of available frames (fill missing channel with silence)
+        int outputFrames = Math.max(micFrames, deviceFrames);
         outputFrames = Math.min(outputFrames, stereoFrames);
+        
+        // If neither source has data, return 0
+        if (outputFrames == 0) {
+            return 0;
+        }
         
         // Mix samples into output buffer
         int outIdx = offset;
         for (int frame = 0; frame < outputFrames; frame++) {
-            // Get mic sample (left channel)
-            short micSample;
-            if (micChannelMode == 0) {
-                // Mono: use the single channel
-                int idx = frame * 2;
-                int lo = micBuffer[idx] & 0xff;
-                int hi = micBuffer[idx + 1];
-                micSample = (short)((hi << 8) | lo);
-            } else {
-                // Stereo: use left channel (or could mix both)
-                int idx = frame * 4;
-                int lo = micBuffer[idx] & 0xff;
-                int hi = micBuffer[idx + 1];
-                micSample = (short)((hi << 8) | lo);
+            // Get mic sample (left channel) - use silence (0) if no data available
+            short micSample = 0;
+            if (frame < micFrames) {
+                if (micChannelMode == 0) {
+                    // Mono: use the single channel
+                    int idx = frame * 2;
+                    int lo = micBuffer[idx] & 0xff;
+                    int hi = micBuffer[idx + 1];
+                    micSample = (short)((hi << 8) | lo);
+                } else {
+                    // Stereo: use left channel (or could mix both)
+                    int idx = frame * 4;
+                    int lo = micBuffer[idx] & 0xff;
+                    int hi = micBuffer[idx + 1];
+                    micSample = (short)((hi << 8) | lo);
+                }
             }
             
-            // Get device sample (right channel)
-            short deviceSample;
-            if (deviceChannelMode == 0) {
-                // Mono: use the single channel
-                int idx = frame * 2;
-                int lo = deviceBuffer[idx] & 0xff;
-                int hi = deviceBuffer[idx + 1];
-                deviceSample = (short)((hi << 8) | lo);
-            } else {
-                // Stereo: use left channel (or could mix both)
-                int idx = frame * 4;
-                int lo = deviceBuffer[idx] & 0xff;
-                int hi = deviceBuffer[idx + 1];
-                deviceSample = (short)((hi << 8) | lo);
+            // Get device sample (right channel) - use silence (0) if no data available
+            short deviceSample = 0;
+            if (frame < deviceFrames) {
+                if (deviceChannelMode == 0) {
+                    // Mono: use the single channel
+                    int idx = frame * 2;
+                    int lo = deviceBuffer[idx] & 0xff;
+                    int hi = deviceBuffer[idx + 1];
+                    deviceSample = (short)((hi << 8) | lo);
+                } else {
+                    // Stereo: use left channel (or could mix both)
+                    int idx = frame * 4;
+                    int lo = deviceBuffer[idx] & 0xff;
+                    int hi = deviceBuffer[idx + 1];
+                    deviceSample = (short)((hi << 8) | lo);
+                }
             }
             
             // Write to output: Left = mic, Right = device
@@ -1122,10 +1225,10 @@ public class SaidItService extends Service {
 //            Log.d(TAG, "READING " + count + " B");
             
             int read;
-            if (dualSourceRecording && deviceAudioRecord != null) {
+            if (dualSourceRecording && deviceAudioRecord != null && audioRecord != null) {
                 // Dual-source mode: read from both sources and mix into stereo
                 read = readAndMixDualSource(array, offset, count);
-            } else {
+            } else if (audioRecord != null) {
                 // Single-source mode: read from primary audioRecord
                 read = audioRecord.read(array, offset, count, AudioRecord.READ_NON_BLOCKING);
                 if (read == AudioRecord.ERROR_BAD_VALUE) {
@@ -1140,6 +1243,10 @@ public class SaidItService extends Service {
                     Log.e(TAG, "AUDIO RECORD ERROR - UNKNOWN ERROR");
                     return 0;
                 }
+            } else {
+                // No audio record available - this shouldn't happen in normal operation
+                Log.w(TAG, "No audio record available in filler consumer");
+                return 0;
             }
             
             // Compute live volume (peak) for this buffer
@@ -1274,6 +1381,29 @@ public class SaidItService extends Service {
 
     public interface StateCallback {
         public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds);
+    }
+
+    /**
+     * Callback interface for requesting MediaProjection permission.
+     * Implemented by the activity to handle showing the MediaProjection permission dialog.
+     */
+    public interface MediaProjectionRequestCallback {
+        /**
+         * Called when the service needs MediaProjection permission to be requested.
+         * The activity should start the MediaProjection intent and handle the result.
+         */
+        void onRequestMediaProjection();
+    }
+
+    // Callback for MediaProjection requests
+    private MediaProjectionRequestCallback mediaProjectionRequestCallback = null;
+
+    /**
+     * Set the callback for MediaProjection requests.
+     * This should be called by the activity that can handle the permission request.
+     */
+    public void setMediaProjectionRequestCallback(MediaProjectionRequestCallback callback) {
+        this.mediaProjectionRequestCallback = callback;
     }
 
     public void getState(final StateCallback stateCallback) {

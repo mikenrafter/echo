@@ -17,6 +17,7 @@ import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Typeface;
+import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -737,25 +738,30 @@ public class SaidItFragment extends Fragment {
                             if (recording) {
                                 echo.stopRecording(new PromptFileReceiver(getActivity()),"");
                             } else {
-                                ProgressDialog pd = new ProgressDialog(getActivity());
-                                pd.setMessage("Recording...");
-                                pd.show();
-                                if (keepRecording) {
-                                    echo.startRecording(defaultSeconds);
-                                } else {
-                                    if (isClipButton) {
-                                        // Range export flow: select FROM then TO, then filename
-                                        pd.dismiss();
-                                        showRangeExportDialog(defaultSeconds);
-                                    } else {
-                                        echo.startRecording(defaultSeconds);
-                                    }
-                                }
+                                // Proceed with recording start - the service will request MediaProjection if needed
+                                doStartRecording(keepRecording, isClipButton, defaultSeconds);
                             }
                         }
                     });
                 }
             });
+        }
+
+        private void doStartRecording(final boolean keepRecording, final boolean isClipButton, final float defaultSeconds) {
+            ProgressDialog pd = new ProgressDialog(getActivity());
+            pd.setMessage("Recording...");
+            pd.show();
+            if (keepRecording) {
+                echo.startRecording(defaultSeconds);
+            } else {
+                if (isClipButton) {
+                    // Range export flow: select FROM then TO, then filename
+                    pd.dismiss();
+                    showRangeExportDialog(defaultSeconds);
+                } else {
+                    echo.startRecording(defaultSeconds);
+                }
+            }
         }
 
         private void showRangeExportDialog(final float defaultStartSeconds) {
