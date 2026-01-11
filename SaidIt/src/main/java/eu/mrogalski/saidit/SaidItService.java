@@ -283,12 +283,7 @@ public class SaidItService extends Service {
                     Log.d(TAG, "Initializing DUAL-SOURCE recording (MIC + Device Audio via MediaProjection)");
                     
                     // Microphone
-                    audioRecord = new AudioRecord(
-                           MediaRecorder.AudioSource.MIC,
-                           SAMPLE_RATE,
-                           micChannelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
-                           AudioFormat.ENCODING_PCM_16BIT,
-                           AudioMemory.CHUNK_SIZE);
+                    audioRecord = createMicrophoneAudioRecord(micChannelMode);
                     
                     if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
                         Log.e(TAG, "Audio: MIC INITIALIZATION ERROR - releasing resources");
@@ -301,33 +296,24 @@ public class SaidItService extends Service {
                     // Device audio via AudioPlaybackCapture (requires MediaProjection)
                     if (mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         try {
-                            AudioFormat audioFormat = new AudioFormat.Builder()
-                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                                .setSampleRate(SAMPLE_RATE)
-                                .setChannelMask(deviceChannelMode == 0 ? 
-                                    AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO)
-                                .build();
+                            AudioFormat audioFormat = createAudioFormat(deviceChannelMode);
+                            AudioPlaybackCaptureConfiguration config = createAudioPlaybackCaptureConfig();
                             
-                            AudioPlaybackCaptureConfiguration config = 
-                                new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
-                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
-                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                            if (config != null) {
+                                deviceAudioRecord = new AudioRecord.Builder()
+                                    .setAudioFormat(audioFormat)
+                                    .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                                    .setAudioPlaybackCaptureConfig(config)
                                     .build();
-                            
-                            deviceAudioRecord = new AudioRecord.Builder()
-                                .setAudioFormat(audioFormat)
-                                .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
-                                .setAudioPlaybackCaptureConfig(config)
-                                .build();
-                            
-                            if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                                Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to single source");
-                                deviceAudioRecord.release();
-                                deviceAudioRecord = null;
-                                // Continue with just microphone
-                            } else {
-                                Log.d(TAG, "AudioPlaybackCapture initialized successfully");
+                                
+                                if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                                    Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to single source");
+                                    deviceAudioRecord.release();
+                                    deviceAudioRecord = null;
+                                    // Continue with just microphone
+                                } else {
+                                    Log.d(TAG, "AudioPlaybackCapture initialized successfully");
+                                }
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error initializing AudioPlaybackCapture: " + e.getMessage(), e);
@@ -348,59 +334,36 @@ public class SaidItService extends Service {
                         Log.d(TAG, "Using audio source: Device Audio (via AudioPlaybackCapture)");
                         
                         try {
-                            AudioFormat audioFormat = new AudioFormat.Builder()
-                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                                .setSampleRate(SAMPLE_RATE)
-                                .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                                .build();
+                            AudioFormat audioFormat = createAudioFormat(0); // mono for single source
+                            AudioPlaybackCaptureConfiguration config = createAudioPlaybackCaptureConfig();
                             
-                            AudioPlaybackCaptureConfiguration config = 
-                                new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
-                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
-                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                            if (config != null) {
+                                audioRecord = new AudioRecord.Builder()
+                                    .setAudioFormat(audioFormat)
+                                    .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                                    .setAudioPlaybackCaptureConfig(config)
                                     .build();
-                            
-                            audioRecord = new AudioRecord.Builder()
-                                .setAudioFormat(audioFormat)
-                                .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
-                                .setAudioPlaybackCaptureConfig(config)
-                                .build();
-                            
-                            if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                                Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to microphone");
-                                audioRecord.release();
-                                audioRecord = null;
                                 
-                                // Fallback to microphone
-                                audioRecord = new AudioRecord(
-                                    MediaRecorder.AudioSource.MIC,
-                                    SAMPLE_RATE,
-                                    AudioFormat.CHANNEL_IN_MONO,
-                                    AudioFormat.ENCODING_PCM_16BIT,
-                                    AudioMemory.CHUNK_SIZE);
+                                if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                                    Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to microphone");
+                                    audioRecord.release();
+                                    audioRecord = null;
+                                    
+                                    // Fallback to microphone
+                                    audioRecord = createMicrophoneAudioRecord(0);
+                                }
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error initializing AudioPlaybackCapture: " + e.getMessage(), e);
                             
                             // Fallback to microphone
-                            audioRecord = new AudioRecord(
-                                MediaRecorder.AudioSource.MIC,
-                                SAMPLE_RATE,
-                                AudioFormat.CHANNEL_IN_MONO,
-                                AudioFormat.ENCODING_PCM_16BIT,
-                                AudioMemory.CHUNK_SIZE);
+                            audioRecord = createMicrophoneAudioRecord(0);
                         }
                     } else {
                         // Microphone only
                         Log.d(TAG, "Using audio source: MIC");
                         
-                        audioRecord = new AudioRecord(
-                               MediaRecorder.AudioSource.MIC,
-                               SAMPLE_RATE,
-                               AudioFormat.CHANNEL_IN_MONO,
-                               AudioFormat.ENCODING_PCM_16BIT,
-                               AudioMemory.CHUNK_SIZE);
+                        audioRecord = createMicrophoneAudioRecord(0);
                     }
 
                     if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
@@ -1540,6 +1503,49 @@ public class SaidItService extends Service {
         }
     }
 
+    /**
+     * Create an AudioFormat for audio recording.
+     * @param channelMode 0 for mono, 1 for stereo
+     * @return AudioFormat configured with sample rate and channel mode
+     */
+    private AudioFormat createAudioFormat(int channelMode) {
+        return new AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .setSampleRate(SAMPLE_RATE)
+            .setChannelMask(channelMode == 0 ? 
+                AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO)
+            .build();
+    }
+
+    /**
+     * Create an AudioPlaybackCaptureConfiguration for device audio capture.
+     * @return AudioPlaybackCaptureConfiguration configured to capture media, game, and unknown audio
+     */
+    private AudioPlaybackCaptureConfiguration createAudioPlaybackCaptureConfig() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaProjection != null) {
+            return new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+                .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
+                .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                .build();
+        }
+        return null;
+    }
+
+    /**
+     * Create a microphone AudioRecord with specified channel mode.
+     * @param channelMode 0 for mono, 1 for stereo
+     * @return AudioRecord configured for microphone capture
+     */
+    private AudioRecord createMicrophoneAudioRecord(int channelMode) {
+        return new AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            SAMPLE_RATE,
+            channelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            AudioMemory.CHUNK_SIZE);
+    }
+
     public float getBytesToSeconds() {
         return 1f / FILL_RATE;
     }
@@ -1564,7 +1570,14 @@ public class SaidItService extends Service {
             return START_STICKY;
         }
         
-        startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        // Determine foreground service type based on what we're recording
+        int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        if ((recordDeviceAudio || dualSourceRecording) && mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Add media projection type when capturing device audio
+            foregroundServiceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+        }
+        
+        startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceType);
         return START_STICKY;
     }
 
