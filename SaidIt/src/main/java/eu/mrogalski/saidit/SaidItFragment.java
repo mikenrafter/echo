@@ -727,6 +727,14 @@ public class SaidItFragment extends Fragment {
         }
 
         public void record(final View button, final boolean keepRecording) {
+            if (echo == null) return;
+
+            // The service will now handle the permission request flow internally.
+            // We can just call startRecording, and it will trigger the callback if needed.
+            startRecordingInternal(button, keepRecording);
+        }
+
+        private void startRecordingInternal(final View button, final boolean keepRecording) {
             echo.getState(new SaidItService.StateCallback() {
                 @Override
                 public void state(final boolean listeningEnabled, final boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
@@ -736,9 +744,9 @@ public class SaidItFragment extends Fragment {
                             final boolean isClipButton = button.getId() == R.id.record_clip_button;
                             final float defaultSeconds = isClipButton ? 300f : 0f;
                             if (recording) {
-                                echo.stopRecording(new PromptFileReceiver(getActivity()),"");
+                                echo.stopRecording(new PromptFileReceiver(getActivity()), "");
                             } else {
-                                // Proceed with recording start - the service will request MediaProjection if needed
+                                // The service's startRecording will now handle the permission check.
                                 doStartRecording(keepRecording, isClipButton, defaultSeconds);
                             }
                         }

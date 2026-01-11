@@ -670,16 +670,21 @@ public class SaidItService extends Service {
     }
 
     public void startRecording(final float prependedMemorySeconds) {
-        // Check if MediaProjection is required but not yet initialized
+        // Always re-acquire MediaProjection when starting a recording that needs it.
+        // This ensures we have a fresh token and avoids crashes from stale ones.
         if (isMediaProjectionRequired()) {
-            Log.d(TAG, "MediaProjection required but not initialized - requesting permission");
+            Log.d(TAG, "MediaProjection is required. Invalidating old one and requesting new permission.");
+            this.mediaProjection = null; // Invalidate any existing projection
+
             if (mediaProjectionRequestCallback != null) {
                 mediaProjectionRequestCallback.onRequestMediaProjection();
-                // The callback will request the permission, and once granted,
-                // the activity will initialize MediaProjection and call this method again
+                // Stop here. The recording will be re-initiated by the activity
+                // in onActivityResult after the user grants permission.
                 return;
             } else {
-                Log.w(TAG, "MediaProjection required but no callback set to request it");
+                Log.w(TAG, "MediaProjection required, but no callback is set to request permission.");
+                // Fallback or error toast could be here
+                return;
             }
         }
 
@@ -944,22 +949,22 @@ public class SaidItService extends Service {
      */
     public boolean initializeMediaProjection(int resultCode, Intent data) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaProjectionManager != null) {
-            try {
-                // For Android 14+ (API 34+), MUST update foreground service type to include MEDIA_PROJECTION
-                // BEFORE calling getMediaProjection(). The Android system checks the foreground service type
-                // at the time MediaProjection is created and throws SecurityException if not properly declared.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE | 
-                                                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
-                    try {
-                        startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceType);
-                        Log.d(TAG, "Updated foreground service type to include MEDIA_PROJECTION");
-                    } catch (Exception e) {
-                        Log.e(TAG, "Failed to update foreground service type before MediaProjection init", e);
-                        return false;
-                    }
+            // For Android 14+ (API 34+), MUST update foreground service type to include MEDIA_PROJECTION
+            // BEFORE calling getMediaProjection(). The Android system checks the foreground service type
+            // at the time MediaProjection is created and throws SecurityException if not properly declared.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE |
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+                try {
+                    Log.d(TAG, "Calling startForeground with MEDIA_PROJECTION type before getting projection.");
+                    startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceType);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to update foreground service type for MediaProjection", e);
+                    // We can still try to get the projection, but it will likely fail.
                 }
-                
+            }
+
+            try {
                 // Now create the MediaProjection with the proper foreground service type already in place
                 MediaProjection projection = mediaProjectionManager.getMediaProjection(resultCode, data);
                 if (projection != null) {
@@ -1705,8 +1710,8 @@ public class SaidItService extends Service {
         
         // Determine foreground service type based on what we're recording
         int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-        if ((recordDeviceAudio || dualSourceRecording) && mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Add media projection type when capturing device audio
+        if (mediaProjection != null && (recordDeviceAudio || dualSourceRecording) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Add media projection type ONLY when we have a valid, user-granted projection
             foregroundServiceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
         }
         

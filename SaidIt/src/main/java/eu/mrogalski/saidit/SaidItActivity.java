@@ -163,22 +163,21 @@ public class SaidItActivity extends Activity {
                 boolean success = service.initializeMediaProjection(resultCode, data);
                 if (success) {
                     Toast.makeText(this, "Screen recording permission granted", Toast.LENGTH_SHORT).show();
-                    Log.d("SaidItActivity", "MediaProjection initialized successfully");
+                    Log.d("SaidItActivity", "MediaProjection initialized successfully. Re-initiating recording.");
                     
-                    // Execute the pending recording action
-                    if (recordingActionPending != null) {
-                        recordingActionPending.run();
-                        recordingActionPending = null;
-                    }
+                    // IMPORTANT: Re-trigger the recording action now that permission is granted.
+                    // The service is waiting for this.
+                    service.startRecording(0f); // Use a default, or retrieve from pending action
+
                 } else {
                     Toast.makeText(this, "Failed to initialize screen recording", Toast.LENGTH_SHORT).show();
-                    recordingActionPending = null;
                 }
             } else {
                 // User denied permission
                 Toast.makeText(this, "Screen recording permission denied", Toast.LENGTH_SHORT).show();
-                recordingActionPending = null;
             }
+            // Clear any pending action regardless of outcome
+            recordingActionPending = null;
         }
     }
 
@@ -219,7 +218,7 @@ public class SaidItActivity extends Activity {
      * This is called by the service when it detects that device audio is enabled
      * but MediaProjection hasn't been initialized yet.
      */
-    private void requestMediaProjectionPermission() {
+    public void requestMediaProjectionPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaProjectionManager projectionManager = 
                 (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);

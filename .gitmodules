@@ -1,4 +1,4 @@
-[submodule "reference/screenrecorder"]
-	path = reference/screenrecorder
-	url = https://gitlab.com/vijai/screenrecorder
-	branch = master
+# [submodule "reference/screenrecorder"]
+# 	path = reference/screenrecorder
+# 	url = https://gitlab.com/vijai/screenrecorder
+# 	branch = master
