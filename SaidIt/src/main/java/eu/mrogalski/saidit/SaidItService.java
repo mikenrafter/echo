@@ -15,6 +15,8 @@ import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
+import android.media.projection.MediaProjection;
+import android.media.AudioPlaybackCaptureConfiguration;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Environment;
@@ -47,7 +49,8 @@ public class SaidItService extends Service {
 
     File wavFile;
     AudioRecord audioRecord; // used only in the audio thread
-    AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode
+    AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode (uses MediaProjection)
+    MediaProjection mediaProjection; // For capturing device audio via AudioPlaybackCapture API
     WavFileWriter wavFileWriter; // used only in the audio thread
     
     // Gradient quality: three separate memory rings for different quality tiers
@@ -276,8 +279,8 @@ public class SaidItService extends Service {
                 Log.d(TAG, "Audio: INITIALIZING AUDIO_RECORD");
 
                 if (dualSourceRecording) {
-                    // Dual-source mode: Initialize both MIC and REMOTE_SUBMIX
-                    Log.d(TAG, "Initializing DUAL-SOURCE recording (MIC + REMOTE_SUBMIX)");
+                    // Dual-source mode: Initialize both MIC and device audio (via AudioPlaybackCapture)
+                    Log.d(TAG, "Initializing DUAL-SOURCE recording (MIC + Device Audio via MediaProjection)");
                     
                     // Microphone
                     audioRecord = new AudioRecord(
@@ -295,35 +298,110 @@ public class SaidItService extends Service {
                         return;
                     }
                     
-                    // Device audio
-                    deviceAudioRecord = new AudioRecord(
-                           MediaRecorder.AudioSource.REMOTE_SUBMIX,
-                           SAMPLE_RATE,
-                           deviceChannelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
-                           AudioFormat.ENCODING_PCM_16BIT,
-                           AudioMemory.CHUNK_SIZE);
-                    
-                    if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                        Log.e(TAG, "Audio: REMOTE_SUBMIX INITIALIZATION ERROR - falling back to single source");
-                        deviceAudioRecord.release();
-                        deviceAudioRecord = null;
-                        // Continue with just microphone
+                    // Device audio via AudioPlaybackCapture (requires MediaProjection)
+                    if (mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        try {
+                            AudioFormat audioFormat = new AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(SAMPLE_RATE)
+                                .setChannelMask(deviceChannelMode == 0 ? 
+                                    AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO)
+                                .build();
+                            
+                            AudioPlaybackCaptureConfiguration config = 
+                                new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
+                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                                    .build();
+                            
+                            deviceAudioRecord = new AudioRecord.Builder()
+                                .setAudioFormat(audioFormat)
+                                .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                                .setAudioPlaybackCaptureConfig(config)
+                                .build();
+                            
+                            if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                                Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to single source");
+                                deviceAudioRecord.release();
+                                deviceAudioRecord = null;
+                                // Continue with just microphone
+                            } else {
+                                Log.d(TAG, "AudioPlaybackCapture initialized successfully");
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error initializing AudioPlaybackCapture: " + e.getMessage(), e);
+                            if (deviceAudioRecord != null) {
+                                deviceAudioRecord.release();
+                                deviceAudioRecord = null;
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "MediaProjection not available or Android version < Q - device audio capture not supported");
                     }
                     
                     Log.d(TAG, "Dual-source initialized: MIC=" + (audioRecord != null) + ", DEVICE=" + (deviceAudioRecord != null));
                 } else {
                     // Single-source mode
-                    int audioSource = recordDeviceAudio ? 
-                        MediaRecorder.AudioSource.REMOTE_SUBMIX : 
-                        MediaRecorder.AudioSource.MIC;
-                    Log.d(TAG, "Using audio source: " + (recordDeviceAudio ? "REMOTE_SUBMIX (device audio)" : "MIC"));
-
-                    audioRecord = new AudioRecord(
-                           audioSource,
-                           SAMPLE_RATE,
-                           AudioFormat.CHANNEL_IN_MONO,
-                           AudioFormat.ENCODING_PCM_16BIT,
-                           AudioMemory.CHUNK_SIZE);
+                    if (recordDeviceAudio && mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        // Device audio only via AudioPlaybackCapture
+                        Log.d(TAG, "Using audio source: Device Audio (via AudioPlaybackCapture)");
+                        
+                        try {
+                            AudioFormat audioFormat = new AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(SAMPLE_RATE)
+                                .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                                .build();
+                            
+                            AudioPlaybackCaptureConfiguration config = 
+                                new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
+                                    .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                                    .build();
+                            
+                            audioRecord = new AudioRecord.Builder()
+                                .setAudioFormat(audioFormat)
+                                .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                                .setAudioPlaybackCaptureConfig(config)
+                                .build();
+                            
+                            if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                                Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to microphone");
+                                audioRecord.release();
+                                audioRecord = null;
+                                
+                                // Fallback to microphone
+                                audioRecord = new AudioRecord(
+                                    MediaRecorder.AudioSource.MIC,
+                                    SAMPLE_RATE,
+                                    AudioFormat.CHANNEL_IN_MONO,
+                                    AudioFormat.ENCODING_PCM_16BIT,
+                                    AudioMemory.CHUNK_SIZE);
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error initializing AudioPlaybackCapture: " + e.getMessage(), e);
+                            
+                            // Fallback to microphone
+                            audioRecord = new AudioRecord(
+                                MediaRecorder.AudioSource.MIC,
+                                SAMPLE_RATE,
+                                AudioFormat.CHANNEL_IN_MONO,
+                                AudioFormat.ENCODING_PCM_16BIT,
+                                AudioMemory.CHUNK_SIZE);
+                        }
+                    } else {
+                        // Microphone only
+                        Log.d(TAG, "Using audio source: MIC");
+                        
+                        audioRecord = new AudioRecord(
+                               MediaRecorder.AudioSource.MIC,
+                               SAMPLE_RATE,
+                               AudioFormat.CHANNEL_IN_MONO,
+                               AudioFormat.ENCODING_PCM_16BIT,
+                               AudioMemory.CHUNK_SIZE);
+                    }
 
                     if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
                         Log.e(TAG, "Audio: INITIALIZATION ERROR - releasing resources");
@@ -417,6 +495,8 @@ public class SaidItService extends Service {
                     deviceAudioRecord.release();
                     deviceAudioRecord = null;
                 }
+                // Note: MediaProjection should NOT be stopped here as it's managed by the activity
+                // The activity that created it is responsible for stopping it when appropriate
                 audioHandler.removeCallbacks(audioReader);
                 
                 // Deallocate memory rings
@@ -832,7 +912,8 @@ public class SaidItService extends Service {
     }
 
     /**
-     * Enable or disable device audio recording (REMOTE_SUBMIX).
+     * Enable or disable device audio recording (via AudioPlaybackCapture API).
+     * Requires MediaProjection to be set via setMediaProjection() before starting.
      * Requires restart of listening to take effect.
      * @param enabled If true, record device audio; if false, record microphone
      */
@@ -862,6 +943,23 @@ public class SaidItService extends Service {
         preferences.edit().putInt(DEVICE_CHANNEL_MODE_KEY, mode).apply();
         deviceChannelMode = mode;
         Log.d(TAG, "Device channel mode set to: " + (mode == 0 ? "mono" : "stereo") + " (restart listening to apply)");
+    }
+
+    /**
+     * Set the MediaProjection instance for device audio capture.
+     * This must be called before starting recording if device audio capture is enabled.
+     * The MediaProjection should be obtained from MediaProjectionManager.getMediaProjection()
+     * after the user grants permission via startActivityForResult with MediaProjectionManager.createScreenCaptureIntent().
+     * 
+     * @param projection The MediaProjection instance obtained from user consent, or null to clear
+     */
+    public void setMediaProjection(MediaProjection projection) {
+        this.mediaProjection = projection;
+        if (projection != null) {
+            Log.d(TAG, "MediaProjection set - device audio capture is now available");
+        } else {
+            Log.d(TAG, "MediaProjection cleared - device audio capture is not available");
+        }
     }
 
     /**
