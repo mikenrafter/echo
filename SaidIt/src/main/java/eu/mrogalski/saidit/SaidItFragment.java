@@ -17,6 +17,7 @@ import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Typeface;
+import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -726,6 +727,14 @@ public class SaidItFragment extends Fragment {
         }
 
         public void record(final View button, final boolean keepRecording) {
+            if (echo == null) return;
+
+            // The service will now handle the permission request flow internally.
+            // We can just call startRecording, and it will trigger the callback if needed.
+            startRecordingInternal(button, keepRecording);
+        }
+
+        private void startRecordingInternal(final View button, final boolean keepRecording) {
             echo.getState(new SaidItService.StateCallback() {
                 @Override
                 public void state(final boolean listeningEnabled, final boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds) {
@@ -735,27 +744,32 @@ public class SaidItFragment extends Fragment {
                             final boolean isClipButton = button.getId() == R.id.record_clip_button;
                             final float defaultSeconds = isClipButton ? 300f : 0f;
                             if (recording) {
-                                echo.stopRecording(new PromptFileReceiver(getActivity()),"");
+                                echo.stopRecording(new PromptFileReceiver(getActivity()), "");
                             } else {
-                                ProgressDialog pd = new ProgressDialog(getActivity());
-                                pd.setMessage("Recording...");
-                                pd.show();
-                                if (keepRecording) {
-                                    echo.startRecording(defaultSeconds);
-                                } else {
-                                    if (isClipButton) {
-                                        // Range export flow: select FROM then TO, then filename
-                                        pd.dismiss();
-                                        showRangeExportDialog(defaultSeconds);
-                                    } else {
-                                        echo.startRecording(defaultSeconds);
-                                    }
-                                }
+                                // The service's startRecording will now handle the permission check.
+                                doStartRecording(keepRecording, isClipButton, defaultSeconds);
                             }
                         }
                     });
                 }
             });
+        }
+
+        private void doStartRecording(final boolean keepRecording, final boolean isClipButton, final float defaultSeconds) {
+            ProgressDialog pd = new ProgressDialog(getActivity());
+            pd.setMessage("Recording...");
+            pd.show();
+            if (keepRecording) {
+                echo.startRecording(defaultSeconds);
+            } else {
+                if (isClipButton) {
+                    // Range export flow: select FROM then TO, then filename
+                    pd.dismiss();
+                    showRangeExportDialog(defaultSeconds);
+                } else {
+                    echo.startRecording(defaultSeconds);
+                }
+            }
         }
 
         private void showRangeExportDialog(final float defaultStartSeconds) {
