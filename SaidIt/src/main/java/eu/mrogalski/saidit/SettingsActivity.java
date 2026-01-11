@@ -87,8 +87,22 @@ public class SettingsActivity extends Activity {
         ((Button) findViewById(R.id.memory_high)).setText(StringFormat.shortFileSize((long) (maxMemory * 0.90)));
 
 
-        TimeFormat.naturalLanguage(getResources(), service.getBytesToSeconds() * service.getMemorySize(), timeFormatResult);
-        ((TextView)findViewById(R.id.history_limit)).setText(timeFormatResult.text);
+        // Display memory info with ring breakdown if gradient is enabled
+        SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        boolean gradientEnabled = prefs.getBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, false);
+        
+        if (gradientEnabled) {
+            int highRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, 48000);
+            int midRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, 16000);
+            int lowRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
+            
+            String ringInfo = String.format("%d kHz: 0-5m, %d kHz: 5-20m, %d kHz: 20m+", 
+                highRate/1000, midRate/1000, lowRate/1000);
+            ((TextView)findViewById(R.id.history_limit)).setText(ringInfo);
+        } else {
+            TimeFormat.naturalLanguage(getResources(), service.getBytesToSeconds() * service.getMemorySize(), timeFormatResult);
+            ((TextView)findViewById(R.id.history_limit)).setText(timeFormatResult.text);
+        }
 
         highlightButtons();
     }
@@ -206,6 +220,12 @@ public class SettingsActivity extends Activity {
 
         // Initialize export effects controls
         initExportEffectsControls(root);
+        
+        // Initialize gradient quality controls
+        initGradientQualityControls(root);
+        
+        // Initialize block size controls
+        initBlockSizeControls(root);
 
         //debugPrintCodecs();
 
@@ -842,5 +862,134 @@ public class SettingsActivity extends Activity {
 
     private int clampDays(int value) {
         return Math.max(1, Math.min(value, 365));
+    }
+    
+    private void initGradientQualityControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox gradientEnabled = (CheckBox) root.findViewById(R.id.gradient_quality_enabled);
+        if (gradientEnabled != null) {
+            gradientEnabled.setChecked(prefs.getBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, false));
+            
+            // Initialize sample rate buttons
+            final int highRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, 48000);
+            final int midRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, 16000);
+            final int lowRate = prefs.getInt(SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
+            
+            // High quality buttons
+            setupGradientRateButtons(root, highRate, 
+                R.id.gradient_high_8khz, R.id.gradient_high_16khz, R.id.gradient_high_48khz,
+                SaidIt.GRADIENT_QUALITY_HIGH_RATE_KEY, "High");
+            
+            // Mid quality buttons
+            setupGradientRateButtons(root, midRate,
+                R.id.gradient_mid_8khz, R.id.gradient_mid_16khz, R.id.gradient_mid_48khz,
+                SaidIt.GRADIENT_QUALITY_MID_RATE_KEY, "Mid");
+            
+            // Low quality buttons
+            setupGradientRateButtons(root, lowRate,
+                R.id.gradient_low_8khz, R.id.gradient_low_16khz, R.id.gradient_low_48khz,
+                SaidIt.GRADIENT_QUALITY_LOW_RATE_KEY, "Low");
+            
+            gradientEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit()
+                        .putBoolean(SaidIt.GRADIENT_QUALITY_ENABLED_KEY, isChecked)
+                        .apply();
+                    Toast.makeText(SettingsActivity.this,
+                        isChecked ? "Gradient quality enabled (restart listening to apply)" : "Gradient quality disabled",
+                        Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+    
+    private void setupGradientRateButtons(View root, int currentRate,
+                                         int id8khz, int id16khz, int id48khz,
+                                         final String prefKey, final String tierName) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        Button btn8k = (Button) root.findViewById(id8khz);
+        Button btn16k = (Button) root.findViewById(id16khz);
+        Button btn48k = (Button) root.findViewById(id48khz);
+        
+        // Highlight current selection
+        btn8k.setBackgroundResource(currentRate == 8000 ? R.drawable.green_button : R.drawable.gray_button);
+        btn16k.setBackgroundResource(currentRate == 16000 ? R.drawable.green_button : R.drawable.gray_button);
+        btn48k.setBackgroundResource(currentRate == 48000 ? R.drawable.green_button : R.drawable.gray_button);
+        
+        View.OnClickListener rateListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int rate = 8000;
+                if (v.getId() == id16khz) rate = 16000;
+                else if (v.getId() == id48khz) rate = 48000;
+                
+                prefs.edit().putInt(prefKey, rate).apply();
+                
+                // Update button highlights
+                root.findViewById(id8khz).setBackgroundResource(rate == 8000 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(id16khz).setBackgroundResource(rate == 16000 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(id48khz).setBackgroundResource(rate == 48000 ? R.drawable.green_button : R.drawable.gray_button);
+                
+                Toast.makeText(SettingsActivity.this,
+                    tierName + " quality: " + (rate/1000) + " kHz (restart listening to apply)",
+                    Toast.LENGTH_SHORT).show();
+            }
+        };
+        
+        btn8k.setOnClickListener(rateListener);
+        btn16k.setOnClickListener(rateListener);
+        btn48k.setOnClickListener(rateListener);
+    }
+    
+    private void initBlockSizeControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        int blockSize = prefs.getInt(SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
+        
+        Button btn5 = (Button) root.findViewById(R.id.block_size_5min);
+        Button btn10 = (Button) root.findViewById(R.id.block_size_10min);
+        Button btn15 = (Button) root.findViewById(R.id.block_size_15min);
+        Button btn30 = (Button) root.findViewById(R.id.block_size_30min);
+        Button btn60 = (Button) root.findViewById(R.id.block_size_60min);
+        
+        // Highlight current selection
+        btn5.setBackgroundResource(blockSize == 5 ? R.drawable.green_button : R.drawable.gray_button);
+        btn10.setBackgroundResource(blockSize == 10 ? R.drawable.green_button : R.drawable.gray_button);
+        btn15.setBackgroundResource(blockSize == 15 ? R.drawable.green_button : R.drawable.gray_button);
+        btn30.setBackgroundResource(blockSize == 30 ? R.drawable.green_button : R.drawable.gray_button);
+        btn60.setBackgroundResource(blockSize == 60 ? R.drawable.green_button : R.drawable.gray_button);
+        
+        View.OnClickListener blockSizeListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                int minutes = 5;
+                if (v.getId() == R.id.block_size_10min) minutes = 10;
+                else if (v.getId() == R.id.block_size_15min) minutes = 15;
+                else if (v.getId() == R.id.block_size_30min) minutes = 30;
+                else if (v.getId() == R.id.block_size_60min) minutes = 60;
+                
+                prefs.edit().putInt(SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, minutes).apply();
+                
+                // Update button highlights
+                root.findViewById(R.id.block_size_5min).setBackgroundResource(minutes == 5 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_10min).setBackgroundResource(minutes == 10 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_15min).setBackgroundResource(minutes == 15 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_30min).setBackgroundResource(minutes == 30 ? R.drawable.green_button : R.drawable.gray_button);
+                root.findViewById(R.id.block_size_60min).setBackgroundResource(minutes == 60 ? R.drawable.green_button : R.drawable.gray_button);
+                
+                Toast.makeText(SettingsActivity.this,
+                    "Activity block size: " + minutes + " minutes",
+                    Toast.LENGTH_SHORT).show();
+            }
+        };
+        
+        btn5.setOnClickListener(blockSizeListener);
+        btn10.setOnClickListener(blockSizeListener);
+        btn15.setOnClickListener(blockSizeListener);
+        btn30.setOnClickListener(blockSizeListener);
+        btn60.setOnClickListener(blockSizeListener);
     }
 }

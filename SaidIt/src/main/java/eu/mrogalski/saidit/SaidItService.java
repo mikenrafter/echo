@@ -49,7 +49,14 @@ public class SaidItService extends Service {
     AudioRecord audioRecord; // used only in the audio thread
     AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode
     WavFileWriter wavFileWriter; // used only in the audio thread
-    final AudioMemory audioMemory = new AudioMemory(); // used only in the audio thread
+    
+    // Gradient quality: three separate memory rings for different quality tiers
+    final AudioMemory audioMemory = new AudioMemory(); // used when gradient quality is OFF
+    final AudioMemory audioMemoryHigh = new AudioMemory(); // High quality ring (first 5 minutes)
+    final AudioMemory audioMemoryMid = new AudioMemory();  // Mid quality ring (next 15 minutes)
+    final AudioMemory audioMemoryLow = new AudioMemory();  // Low quality ring (rest)
+    volatile long recordingStartTimeMillis = 0; // Track when recording started for gradient routing
+    
     DiskAudioBuffer diskAudioBuffer; // used only in the audio thread
     volatile StorageMode storageMode = StorageMode.MEMORY_ONLY;
     volatile boolean recordDeviceAudio = false; // If true, use REMOTE_SUBMIX instead of MIC
@@ -76,12 +83,19 @@ public class SaidItService extends Service {
     private PendingIntent autoSavePendingIntent;
     private PendingIntent autoSaveCleanupPendingIntent;
     int autoSaveAutoDeleteDays = 7; // Auto-delete auto-save files after this many days
+    
+    // Gradient quality recording - allocates 3 memory rings for different quality tiers
+    volatile boolean gradientQualityEnabled = false;
+    volatile int gradientQualityHighRate = 48000;
+    volatile int gradientQualityMidRate = 16000;
+    volatile int gradientQualityLowRate = 8000;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
 
     // Live stats
     volatile int currentVolumeLevel = 0; // 0-32767
+    volatile int silenceThreshold = 500; // Threshold for activity detection
 
     // Silence groups tracking (service-level data models)
     static class SilenceGroup {
@@ -92,6 +106,44 @@ public class SaidItService extends Service {
             this.durationMillis = durationMillis;
         }
     }
+
+    // Timeline segment tracking for activity/silence display
+    public static class TimelineSegment {
+        public enum Type { ACTIVITY, SILENCE }
+        public Type type;
+        public long startTimeMillis;
+        public long endTimeMillis; // 0 if still ongoing
+        public int durationSeconds;
+        
+        public TimelineSegment(Type type, long startTimeMillis) {
+            this.type = type;
+            this.startTimeMillis = startTimeMillis;
+            this.endTimeMillis = 0;
+            this.durationSeconds = 0;
+        }
+        
+        public void end(long endTimeMillis) {
+            this.endTimeMillis = endTimeMillis;
+            this.durationSeconds = (int)((endTimeMillis - startTimeMillis) / 1000);
+        }
+        
+        public int getCurrentDuration() {
+            if (endTimeMillis == 0) {
+                return (int)((System.currentTimeMillis() - startTimeMillis) / 1000);
+            }
+            return durationSeconds;
+        }
+        
+        public boolean isOngoing() {
+            return endTimeMillis == 0;
+        }
+    }
+    
+    // Timeline tracking variables
+    private final java.util.List<TimelineSegment> timelineSegments = new java.util.ArrayList<>();
+    private TimelineSegment currentSegment = null;
+    private volatile int blockSizeMinutes = 5; // Default block size
+    private volatile int maxTimelineSegments = 50; // Keep last 50 segments max
 
     @Override
     public void onCreate() {
@@ -114,7 +166,7 @@ public class SaidItService extends Service {
         
         // Load and configure silence skipping
         boolean silenceSkipEnabled = preferences.getBoolean(SILENCE_SKIP_ENABLED_KEY, false);
-        int silenceThreshold = preferences.getInt(SILENCE_THRESHOLD_KEY, 500);
+        silenceThreshold = preferences.getInt(SILENCE_THRESHOLD_KEY, 500);
         int silenceSegmentCount = preferences.getInt(SILENCE_SEGMENT_COUNT_KEY, 3);
         audioMemory.configureSilenceSkipping(silenceSkipEnabled, silenceThreshold, silenceSegmentCount);
         Log.d(TAG, "Silence skipping: enabled=" + silenceSkipEnabled + ", threshold=" + silenceThreshold + ", segmentCount=" + silenceSegmentCount);
@@ -134,6 +186,14 @@ public class SaidItService extends Service {
         
         // Initialize auto-save auto-delete configuration
         autoSaveAutoDeleteDays = preferences.getInt(AUTO_SAVE_AUTO_DELETE_DAYS_KEY, 7);
+        
+        // Load gradient quality preferences
+        gradientQualityEnabled = preferences.getBoolean(GRADIENT_QUALITY_ENABLED_KEY, false);
+        gradientQualityHighRate = preferences.getInt(GRADIENT_QUALITY_HIGH_RATE_KEY, 48000);
+        gradientQualityMidRate = preferences.getInt(GRADIENT_QUALITY_MID_RATE_KEY, 16000);
+        gradientQualityLowRate = preferences.getInt(GRADIENT_QUALITY_LOW_RATE_KEY, 8000);
+        Log.d(TAG, "Gradient quality: enabled=" + gradientQualityEnabled + 
+            ", rates=" + gradientQualityHighRate + "/" + gradientQualityMidRate + "/" + gradientQualityLowRate);
         
         // Load device audio recording preference
         recordDeviceAudio = preferences.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);
@@ -275,7 +335,30 @@ public class SaidItService extends Service {
                 }
 
                 Log.d(TAG, "Audio: STARTING AudioRecord");
-                audioMemory.allocate(memorySize);
+                
+                // Allocate memory rings based on gradient quality mode
+                if (gradientQualityEnabled) {
+                    // Calculate memory allocation for each tier
+                    // High: 5 min × sampleRate × 2 bytes/sample × 60 sec/min
+                    long highBytes = 5L * 60L * gradientQualityHighRate * 2L;
+                    // Mid: 15 min × sampleRate × 2 bytes/sample × 60 sec/min
+                    long midBytes = 15L * 60L * gradientQualityMidRate * 2L;
+                    // Low: remaining memory
+                    long lowBytes = Math.max(0, memorySize - highBytes - midBytes);
+                    
+                    audioMemoryHigh.allocate(highBytes);
+                    audioMemoryMid.allocate(midBytes);
+                    audioMemoryLow.allocate(lowBytes);
+                    
+                    recordingStartTimeMillis = System.currentTimeMillis();
+                    
+                    Log.d(TAG, "Gradient quality allocated: high=" + (highBytes/1024/1024) + "MB@" + gradientQualityHighRate + 
+                        "Hz, mid=" + (midBytes/1024/1024) + "MB@" + gradientQualityMidRate + 
+                        "Hz, low=" + (lowBytes/1024/1024) + "MB@" + gradientQualityLowRate + "Hz");
+                } else {
+                    audioMemory.allocate(memorySize);
+                    Log.d(TAG, "Single ring allocated: " + (memorySize/1024/1024) + "MB@" + SAMPLE_RATE + "Hz");
+                }
                 
                 // Initialize disk buffer if in BATCH_TO_DISK mode
                 if (storageMode == StorageMode.BATCH_TO_DISK) {
@@ -320,6 +403,14 @@ public class SaidItService extends Service {
             @Override
             public void run() {
                 Log.d(TAG, "Executing: STOP LISTENING");
+                // Ensure any ongoing VAD recording is properly finalized to avoid corruption
+                if (isRecordingActivity) {
+                    try {
+                        stopActivityRecording();
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Error while closing VAD recording on stop", t);
+                    }
+                }
                 if(audioRecord != null)
                     audioRecord.release();
                 if(deviceAudioRecord != null) {
@@ -327,7 +418,15 @@ public class SaidItService extends Service {
                     deviceAudioRecord = null;
                 }
                 audioHandler.removeCallbacks(audioReader);
-                audioMemory.allocate(0);
+                
+                // Deallocate memory rings
+                if (gradientQualityEnabled) {
+                    audioMemoryHigh.allocate(0);
+                    audioMemoryMid.allocate(0);
+                    audioMemoryLow.allocate(0);
+                } else {
+                    audioMemory.allocate(0);
+                }
                 
                 // Cleanup disk buffer
                 cleanupDiskBuffer();
@@ -431,50 +530,78 @@ public class SaidItService extends Service {
                 final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
                 try (WavFileWriter writer = new WavFileWriter(format, file)) {
                     try {
-                        // First pass: collect the range into memory for optional normalization
-                        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream(bytesToWrite);
-                        final int totalTarget = bytesToWrite;
-                        final int[] written = new int[]{0};
+                        try {
+                            // First pass: collect the range into memory for optional normalization
+                            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream(bytesToWrite);
+                            final int totalTarget = bytesToWrite;
+                            final int[] written = new int[]{0};
 
-                        AudioMemory.Consumer consumer = new AudioMemory.Consumer() {
-                            @Override
-                            public int consume(byte[] array, int offset, int count) throws IOException {
-                                int remaining = totalTarget - written[0];
-                                if (remaining <= 0) return 0;
-                                int toCopy = Math.min(count, remaining);
-                                baos.write(array, offset, toCopy);
-                                written[0] += toCopy;
-                                return 0;
+                            AudioMemory.Consumer consumer = new AudioMemory.Consumer() {
+                                @Override
+                                public int consume(byte[] array, int offset, int count) throws IOException {
+                                    int remaining = totalTarget - written[0];
+                                    if (remaining <= 0) return 0;
+                                    int toCopy = Math.min(count, remaining);
+                                    baos.write(array, offset, toCopy);
+                                    written[0] += toCopy;
+                                    return 0;
+                                }
+                            };
+
+                            if (useDisk) {
+                                diskAudioBuffer.read(skipBytes, consumer);
+                            } else {
+                                audioMemory.read(skipBytes, consumer);
                             }
-                        };
 
-                        if (useDisk) {
-                            diskAudioBuffer.read(skipBytes, consumer);
-                        } else {
-                            audioMemory.read(skipBytes, consumer);
-                        }
+                            byte[] output = baos.toByteArray();
+                            // Apply effects in order: noise suppression -> normalization
+                            if (noiseSuppressionEnabled) {
+                                output = AudioEffects.applyNoiseSuppression(output, noiseThreshold);
+                            }
+                            if (normalizeEnabled) {
+                                output = AudioEffects.applyAutoNormalization(output);
+                            }
 
-                        byte[] output = baos.toByteArray();
-                        // Apply effects in order: noise suppression -> normalization
-                        if (noiseSuppressionEnabled) {
-                            output = AudioEffects.applyNoiseSuppression(output, noiseThreshold);
-                        }
-                        if (normalizeEnabled) {
-                            output = AudioEffects.applyAutoNormalization(output);
-                        }
+                            writer.write(output);
 
-                        writer.write(output);
-
-                        if (wavFileReceiver != null) {
-                            wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
+                            if (wavFileReceiver != null) {
+                                wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
+                            }
+                        } catch (OutOfMemoryError oomError) {
+                            // OOM at line 457 - try memory-efficient fallback
+                            Log.e(TAG, "OutOfMemoryError during export, attempting memory-efficient fallback", oomError);
+                            CrashHandler.writeCrashLog(SaidItService.this, "OOM during export at line 457", oomError);
+                            
+                            try {
+                                // Memory-efficient approach: stream directly to disk without loading into memory
+                                exportMemoryEfficient(writer, skipBytes, bytesToWrite, useDisk);
+                                
+                                if (wavFileReceiver != null) {
+                                    wavFileReceiver.fileReady(file, writer.getTotalSampleBytesWritten() * getBytesToSeconds());
+                                }
+                                
+                                showToast(getString(R.string.export_completed_memory_efficient));
+                            } catch (Exception fallbackError) {
+                                Log.e(TAG, "Memory-efficient fallback also failed", fallbackError);
+                                CrashHandler.writeCrashLog(SaidItService.this, "Memory-efficient export fallback failed", fallbackError);
+                                showToast(getString(R.string.export_failed_oom));
+                                throw fallbackError;
+                            }
                         }
                     } catch (IOException e) {
                         showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
                         Log.e(TAG, "Error during writing history into " + file.getAbsolutePath(), e);
+                        CrashHandler.writeCrashLog(SaidItService.this, "IOException during export", e);
+                    } catch (Exception e) {
+                        showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
+                        Log.e(TAG, "Unexpected error during export: " + file.getAbsolutePath(), e);
+                        CrashHandler.writeCrashLog(SaidItService.this, "Unexpected error during export", e);
                     }
                 } catch (IOException e) {
                     showToast(getString(R.string.cant_create_file) + file.getAbsolutePath());
                     Log.e(TAG, "Can't create file " + file.getAbsolutePath(), e);
+                    CrashHandler.writeCrashLog(SaidItService.this, "Failed to create export file", e);
                 }
             }
         });
@@ -691,6 +818,8 @@ public class SaidItService extends Service {
             .putInt(SILENCE_THRESHOLD_KEY, threshold)
             .putInt(SILENCE_SEGMENT_COUNT_KEY, segmentCount)
             .apply();
+        
+        silenceThreshold = threshold; // Update the class field
         
         audioHandler.post(new Runnable() {
             @Override
@@ -960,6 +1089,9 @@ public class SaidItService extends Service {
                     if (abs > max) max = abs;
                 }
                 currentVolumeLevel = max;
+                
+                // Update timeline tracking
+                updateTimeline(max, silenceThreshold);
             }
 
             // Write to active recording file if recording
@@ -1038,11 +1170,39 @@ public class SaidItService extends Service {
         @Override
         public void run() {
             try {
-                audioMemory.fill(filler);
+                if (gradientQualityEnabled) {
+                    // Route audio to the appropriate quality tier based on elapsed time
+                    long elapsedMillis = System.currentTimeMillis() - recordingStartTimeMillis;
+                    int elapsedSeconds = (int)(elapsedMillis / 1000);
+                    
+                    if (elapsedSeconds < 300) { // 0-5 minutes: HIGH quality
+                        audioMemoryHigh.fill(filler);
+                    } else if (elapsedSeconds < 1200) { // 5-20 minutes: MID quality
+                        audioMemoryMid.fill(filler);
+                    } else { // 20+ minutes: LOW quality
+                        audioMemoryLow.fill(filler);
+                    }
+                } else {
+                    audioMemory.fill(filler);
+                }
             } catch (IOException e) {
                 final String errorMessage = getString(R.string.error_during_recording_into) + wavFile.getName();
                 Toast.makeText(SaidItService.this, errorMessage, Toast.LENGTH_LONG).show();
                 Log.e(TAG, errorMessage, e);
+                CrashHandler.writeCrashLog(SaidItService.this, "Audio reader error", e);
+                // Close any active VAD recording to ensure file integrity on errors
+                try {
+                    if (isRecordingActivity) {
+                        stopActivityRecording();
+                    }
+                } catch (Throwable t) {
+                    Log.e(TAG, "Error while closing VAD recording after audio error", t);
+                    CrashHandler.writeCrashLog(SaidItService.this, "Error closing VAD after audio error", t);
+                }
+                stopRecording(new SaidItFragment.NotifyFileReceiver(SaidItService.this), "");
+            } catch (Throwable t) {
+                Log.e(TAG, "Unexpected error in audio reader", t);
+                CrashHandler.writeCrashLog(SaidItService.this, "Unexpected error in audio reader", t);
                 stopRecording(new SaidItFragment.NotifyFileReceiver(SaidItService.this), "");
             }
         }
@@ -1062,26 +1222,70 @@ public class SaidItService extends Service {
             @Override
             public void run() {
                 flushAudioRecord();
-                final AudioMemory.Stats stats = audioMemory.getStats(FILL_RATE);
-                // Silence group state transitions occur on chunk boundaries within audioMemory.fill()
-                // Here we finalize group closures when audio becomes non-silent.
-                // Group creation/closure handled in audioMemory; we only compute seconds from segments.
+                
+                final AudioMemory.Stats stats;
+                final float bytesToSeconds;
+                final float skippedSeconds;
+                final float totalMemorySeconds; // Actual total capacity in seconds
+                
+                if (gradientQualityEnabled) {
+                    // Combine stats from all three rings
+                    AudioMemory.Stats statsHigh = audioMemoryHigh.getStats(gradientQualityHighRate * 2);
+                    AudioMemory.Stats statsMid = audioMemoryMid.getStats(gradientQualityMidRate * 2);
+                    AudioMemory.Stats statsLow = audioMemoryLow.getStats(gradientQualityLowRate * 2);
+                    
+                    // Create combined stats
+                    stats = new AudioMemory.Stats();
+                    stats.filled = statsHigh.filled + statsMid.filled + statsLow.filled;
+                    stats.total = statsHigh.total + statsMid.total + statsLow.total;
+                    stats.estimation = statsHigh.estimation + statsMid.estimation + statsLow.estimation;
+                    stats.overwriting = statsHigh.overwriting || statsMid.overwriting || statsLow.overwriting;
+                    stats.skippedSegments = statsHigh.skippedSegments + statsMid.skippedSegments + statsLow.skippedSegments;
+                    
+                    // Calculate ACTUAL total capacity by converting each ring's capacity to seconds
+                    float totalCapacityHigh = statsHigh.total / (float)(gradientQualityHighRate * 2);
+                    float totalCapacityMid = statsMid.total / (float)(gradientQualityMidRate * 2);
+                    float totalCapacityLow = statsLow.total / (float)(gradientQualityLowRate * 2);
+                    totalMemorySeconds = totalCapacityHigh + totalCapacityMid + totalCapacityLow;
+                    
+                    // Calculate durations for each ring
+                    float durationHigh = statsHigh.filled / (float)(gradientQualityHighRate * 2);
+                    float durationMid = statsMid.filled / (float)(gradientQualityMidRate * 2);
+                    float durationLow = statsLow.filled / (float)(gradientQualityLowRate * 2);
+                    
+                    // Use weighted average for bytes to seconds conversion (for memorized calculation)
+                    float totalDuration = durationHigh + durationMid + durationLow;
+                    if (totalDuration > 0 && stats.filled > 0) {
+                        bytesToSeconds = totalDuration / stats.filled;
+                    } else {
+                        bytesToSeconds = 1.0f / (gradientQualityHighRate * 2); // Default to high rate
+                    }
+                    
+                    // Calculate skipped seconds from each ring
+                    float skippedHigh = statsHigh.skippedSegments * AudioMemory.CHUNK_SIZE / (float)(gradientQualityHighRate * 2);
+                    float skippedMid = statsMid.skippedSegments * AudioMemory.CHUNK_SIZE / (float)(gradientQualityMidRate * 2);
+                    float skippedLow = statsLow.skippedSegments * AudioMemory.CHUNK_SIZE / (float)(gradientQualityLowRate * 2);
+                    skippedSeconds = skippedHigh + skippedMid + skippedLow;
+                } else {
+                    // Single ring mode
+                    stats = audioMemory.getStats(FILL_RATE);
+                    bytesToSeconds = getBytesToSeconds();
+                    totalMemorySeconds = stats.total * bytesToSeconds;
+                    skippedSeconds = stats.skippedSegments * AudioMemory.CHUNK_SIZE * bytesToSeconds;
+                }
                 
                 int recorded = 0;
                 if(wavFileWriter != null) {
                     recorded += wavFileWriter.getTotalSampleBytesWritten();
                     recorded += stats.estimation;
                 }
-                final float bytesToSeconds = getBytesToSeconds();
                 final int finalRecorded = recorded;
-                // Calculate skipped seconds: each segment is CHUNK_SIZE bytes
-                final float skippedSeconds = stats.skippedSegments * AudioMemory.CHUNK_SIZE * bytesToSeconds;
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
                         stateCallback.state(listeningEnabled, recording,
                                 (stats.overwriting ? stats.total : stats.filled + stats.estimation) * bytesToSeconds,
-                                stats.total * bytesToSeconds,
+                                totalMemorySeconds,
                                 finalRecorded * bytesToSeconds,
                                 skippedSeconds);
                     }
@@ -1101,7 +1305,17 @@ public class SaidItService extends Service {
             @Override
             public void run() {
                 final int volume = currentVolumeLevel;
-                final int groups = audioMemory.getSkippedGroupsCount();
+                final int groups;
+                
+                if (gradientQualityEnabled) {
+                    // Sum skipped groups from all rings
+                    groups = audioMemoryHigh.getSkippedGroupsCount() + 
+                            audioMemoryMid.getSkippedGroupsCount() + 
+                            audioMemoryLow.getSkippedGroupsCount();
+                } else {
+                    groups = audioMemory.getSkippedGroupsCount();
+                }
+                
                 Log.d(TAG, "getLiveStats: volume=" + volume + ", groups=" + groups);
                 sourceHandler.post(new Runnable() {
                     @Override
@@ -1119,6 +1333,8 @@ public class SaidItService extends Service {
     }
 
     public void getSilenceGroups(final SilenceGroupsCallback cb) {
+        if (cb == null) return;
+        
         final Handler sourceHandler = new Handler();
         audioHandler.post(new Runnable() {
             @Override
@@ -1146,11 +1362,84 @@ public class SaidItService extends Service {
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        cb.onGroups(snapshot);
+                        if (cb != null) {
+                            cb.onGroups(snapshot);
+                        }
                     }
                 });
             }
         });
+    }
+
+    // Timeline segments API for activity/silence display
+    public interface TimelineCallback {
+        void onTimeline(java.util.List<TimelineSegment> segments, TimelineSegment currentSegment, float totalMemorySeconds);
+    }
+
+    public void getTimeline(final TimelineCallback cb) {
+        if (cb == null) return;
+        
+        final Handler sourceHandler = new Handler();
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                synchronized (timelineSegments) {
+                    // Create a copy of the timeline segments
+                    final java.util.List<TimelineSegment> segmentsCopy = new java.util.ArrayList<>(timelineSegments);
+                    final TimelineSegment currentCopy = currentSegment;
+                    
+                    // Calculate total memory in seconds
+                    int bytesAvailable;
+                    if (gradientQualityEnabled) {
+                        bytesAvailable = audioMemoryHigh.countFilled() + 
+                                       audioMemoryMid.countFilled() + 
+                                       audioMemoryLow.countFilled();
+                    } else {
+                        bytesAvailable = audioMemory.countFilled();
+                    }
+                    final float totalMemorySec = bytesAvailable * getBytesToSeconds();
+                    
+                    sourceHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (cb != null) {
+                                cb.onTimeline(segmentsCopy, currentCopy, totalMemorySec);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+    
+    // Update timeline tracking based on volume level
+    private void updateTimeline(int volumeLevel, int silenceThreshold) {
+        synchronized (timelineSegments) {
+            boolean isActivity = volumeLevel >= silenceThreshold;
+            
+            if (currentSegment == null) {
+                // Start first segment
+                TimelineSegment.Type type = isActivity ? TimelineSegment.Type.ACTIVITY : TimelineSegment.Type.SILENCE;
+                currentSegment = new TimelineSegment(type, System.currentTimeMillis());
+            } else {
+                // Check if we need to transition to a new segment
+                TimelineSegment.Type currentType = currentSegment.type;
+                TimelineSegment.Type newType = isActivity ? TimelineSegment.Type.ACTIVITY : TimelineSegment.Type.SILENCE;
+                
+                if (currentType != newType) {
+                    // End current segment and start new one
+                    currentSegment.end(System.currentTimeMillis());
+                    timelineSegments.add(currentSegment);
+                    
+                    // Prune old segments to keep memory manageable
+                    while (timelineSegments.size() > maxTimelineSegments) {
+                        timelineSegments.remove(0);
+                    }
+                    
+                    currentSegment = new TimelineSegment(newType, System.currentTimeMillis());
+                }
+            }
+        }
     }
 
     public float getBytesToSeconds() {
@@ -1506,6 +1795,65 @@ public class SaidItService extends Service {
         } finally {
             isRecordingActivity = false;
         }
+    }
+    
+    /**
+     * Memory-efficient export that streams audio data directly to disk
+     * without loading the entire buffer into memory.
+     * Used as fallback when OOM occurs during normal export.
+     * 
+     * NOTE: This method bypasses audio effects (noise suppression and normalization)
+     * to minimize memory usage. This is a necessary tradeoff to complete the export
+     * when memory is constrained.
+     */
+    private void exportMemoryEfficient(WavFileWriter writer, int skipBytes, int bytesToWrite, boolean useDisk) throws IOException {
+        // Only called on audio thread - verify in both debug and production builds
+        if (audioHandler.getLooper() != Looper.myLooper()) {
+            throw new IllegalStateException("exportMemoryEfficient must be called on audio thread");
+        }
+        
+        Log.d(TAG, "Starting memory-efficient export: skipBytes=" + skipBytes + ", bytesToWrite=" + bytesToWrite);
+        Log.d(TAG, "Note: Audio effects (normalization/noise suppression) are bypassed in memory-efficient mode");
+        
+        final int[] totalWritten = new int[]{0};
+        final int targetBytes = bytesToWrite;
+        
+        // Stream data in chunks directly to the writer
+        AudioMemory.Consumer directWriter = new AudioMemory.Consumer() {
+            @Override
+            public int consume(byte[] array, int offset, int count) throws IOException {
+                int remaining = targetBytes - totalWritten[0];
+                if (remaining <= 0) return 0;
+                
+                int toWrite = Math.min(count, remaining);
+                writer.write(array, offset, toWrite);
+                totalWritten[0] += toWrite;
+                
+                // Periodically suggest GC to free up memory
+                if (totalWritten[0] % (AudioMemory.CHUNK_SIZE * 10) == 0) {
+                    System.gc();
+                }
+                
+                return 0;
+            }
+        };
+        
+        // Read and write in streaming fashion
+        if (useDisk) {
+            diskAudioBuffer.read(skipBytes, directWriter);
+        } else {
+            audioMemory.read(skipBytes, directWriter);
+        }
+        
+        Log.d(TAG, "Memory-efficient export completed: " + totalWritten[0] + " bytes written");
+    }
+    
+    /**
+     * Count the number of crash log files in the Echo/Crashes directory.
+     * @return Number of crash logs
+     */
+    public int getCrashLogCount() {
+        return CrashHandler.getCrashLogCount(this);
     }
 
 }

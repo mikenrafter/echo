@@ -42,8 +42,6 @@
         <item quantity="other">%d seconds</item>
     </plurals>
 
-    <string name="save_description">To save contents of memory to a file, choose how much time would you like to save:</string>
-
     <string name="clip_recording">CLIP RECORDING</string>
     <string name="range_help">Choose a start (FROM) and end (TO) time in minutes ago. "Now" means end at the current moment.</string>
 
@@ -132,8 +130,9 @@
     <string name="silence_segment_count_label">Consecutive silent segments to skip:</string>
     <string name="silence_skipped_seconds_label">Silent audio skipped: %1$d s</string>
     <string name="silence_skipped_groups_label">Silent groups skipped: %1$d</string>
+    <string name="silence_skipped_combined_label">%1$s skipped over %2$d groups</string>
     <string name="view_skipped_silence">View skipped silence log</string>
-    <string name="volume_meter_label">Live volume</string>
+    <string name="volume_meter_label">VOLUME</string>
     <string name="device_audio_label">Device Audio Recording</string>
     <string name="device_audio_enabled">Record device audio (system/app sounds)</string>
     <string name="device_audio_description">Records internal audio instead of microphone. Limitations: Requires Android 10+, may not work on all devices, some apps block audio capture, DRM-protected content excluded. Root or special ROM may be required.</string>
@@ -171,6 +170,31 @@
     <string name="activity_high_bitrate_label">Use high-bitrate recording</string>
     <string name="activity_detection_updated">Activity detection settings applied</string>
     <string name="activity_detection_invalid_value">Please enter a value greater than zero.</string>
+    
+    <!-- Gradient quality recording -->
+    <string name="gradient_quality_label">Gradient Quality Recording (Experimental)</string>
+    <string name="gradient_quality_enabled">Enable gradient quality (3-tier bitrate)</string>
+    <string name="gradient_quality_description">Allocates 3 memory rings: High bitrate for first 5 minutes, mid bitrate for next 15 minutes, low bitrate for rest. Requires restart.</string>
+    <string name="gradient_high_quality_label">High quality (first 5 minutes):</string>
+    <string name="gradient_mid_quality_label">Mid quality (next 15 minutes):</string>
+    <string name="gradient_low_quality_label">Low quality (everything after 20 minutes):</string>
+    <string name="gradient_ring_info_format">%1$d kHz: %2$s</string>
+    <string name="memory_ring_info">Memory rings allocated: %s</string>
+    
+    <!-- Activity/Silence Timeline -->
+    <string name="activity_timeline_title">Recording Timeline</string>
+    <string name="activity_segment_format">Activity: %s</string>
+    <string name="silence_segment_format">Silence: %s</string>
+    <string name="save_from_here">save from here</string>
+    <string name="save_to_here">save to here</string>
+    <string name="current_activity">Activity: %s [RECORDING]</string>
+    <string name="block_size_label">Activity Block Size</string>
+    <string name="block_size_description">How long each activity block should be displayed in the timeline.</string>
+    <string name="block_size_5min">5 minutes</string>
+    <string name="block_size_10min">10 minutes</string>
+    <string name="block_size_15min">15 minutes</string>
+    <string name="block_size_30min">30 minutes</string>
+    <string name="block_size_60min">60 minutes</string>
 
     <!-- Others -->
 
@@ -179,6 +203,11 @@
     <string name="save_recording">Save Recording</string> <!-- must end sentence -->
     <string name="permission_required">Permission required</string>
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
+    
+    <!-- Export error messages -->
+    <string name="export_completed_memory_efficient">Export completed using memory-efficient mode (audio effects bypassed)</string>
+    <string name="export_failed_oom">Export failed: Out of memory. Try reducing memory size or export duration.</string>
+    <string name="crash_logs_available">%d crash log(s) available in Echo/Crashes</string>
     <!--
     <string name="compress_help"><b>WAV</b> - oznacza brak jakiejkolwiek kompresji - jest to format najlepiej oszczędzający baterię i cechujący się najlepszą jakością. Jego wadą jest duże zużycie pamięci.\n
 <b>3GP</b> - oferuje najmocniejszą kompresję ale jest bardzo energożerny i może usunąć z nagrania drobne detale\n
