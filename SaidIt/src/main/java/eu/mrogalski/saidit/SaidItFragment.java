@@ -70,11 +70,33 @@ public class SaidItFragment extends Fragment {
     private LinearLayout ready_section;
     private TextView history_limit;
     private TextView history_size;
-    private TextView history_size_title;
-    // Removed separate skipped seconds info; merged into skippedGroupsInfo
+    // Removed history_size_title - no longer displaying "memory holds the most recent"
     private TextView volumeMeterLabel;
     private int silenceThreshold = 500; // Default from settings
     private int silenceSegmentCount = 3; // Default from settings
+    private int blockSizeMinutes = 5; // Default block size for activity timeline
+    
+    // Activity/Silence timeline display
+    private LinearLayout activityTimelineContainer;
+    private LinearLayout activityTimeline;
+    private TimelineSegmentSelection selectedFrom = null;
+    private TimelineSegmentSelection selectedTo = null;
+    
+    // Cache for timeline state to avoid unnecessary re-renders
+    private int lastSilenceGroupsCount = -1;
+    private long lastTimelineUpdate = 0;
+    private static final long TIMELINE_UPDATE_INTERVAL_MS = 2000; // Only update every 2 seconds at most
+    
+    // Track which activity blocks are selected for save range
+    private static class TimelineSegmentSelection {
+        ActivityBlockBuilder.ActivityBlock block;
+        int index;
+        
+        TimelineSegmentSelection(ActivityBlockBuilder.ActivityBlock block, int index) {
+            this.block = block;
+            this.index = index;
+        }
+    }
 
     private LinearLayout rec_section;
     private TextView rec_indicator;
@@ -192,8 +214,7 @@ public class SaidItFragment extends Fragment {
 
         history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
-        history_size_title = (TextView) rootView.findViewById(R.id.history_size_title);
-        // skipped_audio_info removed; combined display uses skipped_groups_info
+        // history_size_title removed
 
         history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
@@ -226,10 +247,15 @@ public class SaidItFragment extends Fragment {
         viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
         crashLogsInfo = (TextView) rootView.findViewById(R.id.crash_logs_info);
         
+        // Activity/Silence timeline views
+        activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
+        activityTimeline = (LinearLayout) rootView.findViewById(R.id.activity_timeline);
+        
         // Load silence threshold and segment count from preferences
         android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
         silenceThreshold = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_THRESHOLD_KEY, 500);
         silenceSegmentCount = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
+        blockSizeMinutes = prefs.getInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
 
         ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
         rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
@@ -351,7 +377,6 @@ public class SaidItFragment extends Fragment {
             String memorizedText = String.format("%02d:%02d:%02d", hours, minutes, seconds);
             
             if (!history_size.getText().equals(memorizedText)) {
-                history_size_title.setText(R.string.history_size_title_hms);
                 history_size.setText(memorizedText);
             }
 
@@ -372,8 +397,8 @@ public class SaidItFragment extends Fragment {
                         if (volumeMeter != null) {
                             volumeMeter.setProgress(Math.max(0, Math.min(32767, volumeLevel)));
                         }
-                        // Update volume meter label based on silence threshold
-                        if (volumeMeterLabel != null) {
+                        // Update volume meter label and visibility based on silence threshold
+                        if (volumeMeterLabel != null && volumeMeter != null) {
                             if (volumeLevel < silenceThreshold) {
                                 volumeMeterLabel.setText("SILENT");
                             } else {
@@ -408,6 +433,16 @@ public class SaidItFragment extends Fragment {
                                 crashLogsInfo.setVisibility(View.GONE);
                             }
                         }
+                        
+                        // Update timeline only when skipped groups count changes or enough time has passed
+                        // This prevents constant re-rendering that slows down the clock
+                        long now = System.currentTimeMillis();
+                        if (skippedGroups != lastSilenceGroupsCount || 
+                            (now - lastTimelineUpdate) > TIMELINE_UPDATE_INTERVAL_MS) {
+                            lastSilenceGroupsCount = skippedGroups;
+                            lastTimelineUpdate = now;
+                            updateTimelineDisplay();
+                        }
                     }
                 });
             }
@@ -415,6 +450,227 @@ public class SaidItFragment extends Fragment {
             history_size.postOnAnimationDelayed(updater, 100);
         }
     };
+    
+    // Update the activity/silence timeline display
+    // Only updates when there are actual changes to silence groups
+    private void updateTimelineDisplay() {
+        if (echo == null || activityTimeline == null || activityTimelineContainer == null) return;
+        
+        // Fetch silence groups to determine activity blocks
+        // Silence groups only change at 20s segment boundaries, not continuously
+        echo.getSilenceGroups(new SaidItService.SilenceGroupsCallback() {
+            @Override
+            public void onGroups(java.util.List<SaidItService.SilenceGroup> silenceGroups) {
+                if (echo == null) return;
+                echo.getTimeline(new SaidItService.TimelineCallback() {
+                    @Override
+                    public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment, float totalMemorySeconds) {
+                        final Activity activity = getActivity();
+                        if (activity == null) return;
+                        
+                        activity.runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                // Use block size from settings
+                                long blockSizeMillis = blockSizeMinutes * 60 * 1000;
+                                
+                                // Build activity blocks from silence groups and memory span
+                                java.util.List<ActivityBlockBuilder.ActivityBlock> activityBlocks = 
+                                    ActivityBlockBuilder.buildActivityBlocks(
+                                        silenceGroups, totalMemorySeconds, blockSizeMillis
+                                    );
+                                
+                                // Check if we have any content to display
+                                boolean hasContent = (activityBlocks != null && !activityBlocks.isEmpty()) ||
+                                    (silenceGroups != null && !silenceGroups.isEmpty());
+                                
+                                if (!hasContent) {
+                                    // Keep container visible but show it's empty if it was visible before
+                                    if (activityTimelineContainer.getVisibility() == View.VISIBLE) {
+                                        activityTimeline.removeAllViews();
+                                    }
+                                    return;
+                                }
+                                
+                                // Make timeline always visible once we have content
+                                activityTimelineContainer.setVisibility(View.VISIBLE);
+                                
+                                // Clear and rebuild only when there are changes
+                                activityTimeline.removeAllViews();
+                                
+                                // Always show save buttons for activity blocks
+                                boolean showSaveButtons = true;
+                                
+                                // Display activity blocks in reverse order (newest first)
+                                if (activityBlocks != null && !activityBlocks.isEmpty()) {
+                                    for (int i = activityBlocks.size() - 1; i >= 0; i--) {
+                                        ActivityBlockBuilder.ActivityBlock block = activityBlocks.get(i);
+                                        addActivityBlockView(block, i, showSaveButtons);
+                                    }
+                                }
+                                
+                                // Display silence groups in reverse order (newest first)
+                                if (silenceGroups != null && !silenceGroups.isEmpty()) {
+                                    for (int i = silenceGroups.size() - 1; i >= 0; i--) {
+                                        SaidItService.SilenceGroup group = silenceGroups.get(i);
+                                        addSilenceGroupView(group);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
+    
+    // Add a view for an activity block calculated from silence groups
+    private void addActivityBlockView(final ActivityBlockBuilder.ActivityBlock block, final int blockIndex, boolean showSaveButton) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        LinearLayout blockLayout = new LinearLayout(activity);
+        blockLayout.setOrientation(LinearLayout.HORIZONTAL);
+        blockLayout.setPadding(10, 5, 10, 5);
+        
+        TextView textView = new TextView(activity);
+        int durationSeconds = (int)(block.durationMillis / 1000);
+        String durationStr = formatDuration(durationSeconds);
+        textView.setText(String.format("Activity: %s", durationStr));
+        textView.setTextSize(14);
+        textView.setLayoutParams(new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1.0f
+        ));
+        
+        blockLayout.addView(textView);
+        
+        if (showSaveButton) {
+            Button saveButton = new Button(activity);
+            // Set button text based on selection state
+            if (selectedFrom == null) {
+                saveButton.setText(R.string.save_from_here);
+            } else {
+                saveButton.setText(R.string.save_to_here);
+            }
+            saveButton.setTextSize(12);
+            saveButton.setPadding(20, 10, 20, 10);
+            saveButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    handleActivityBlockSelection(block, blockIndex);
+                }
+            });
+            
+            blockLayout.addView(saveButton);
+        }
+        
+        activityTimeline.addView(blockLayout);
+    }
+    
+
+
+    // Add a view for a silence group from AudioMemory (20-second segments)
+    private void addSilenceGroupView(SaidItService.SilenceGroup group) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        TextView textView = new TextView(activity);
+        long durationMillis = group.durationMillis;
+        int durationSeconds = (int)(durationMillis / 1000);
+        String durationStr = formatDuration(durationSeconds);
+        textView.setText(String.format("Silence: %s", durationStr));
+        textView.setTextSize(14);
+        textView.setPadding(10, 5, 10, 5);
+        textView.setTextColor(0xFF888888);
+        
+        activityTimeline.addView(textView);
+    }
+    // Handle selection of a timeline segment for save range
+    private void handleActivityBlockSelection(ActivityBlockBuilder.ActivityBlock block, int index) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        if (selectedFrom == null) {
+            // First selection - set FROM
+            selectedFrom = new TimelineSegmentSelection(block, index);
+            Toast.makeText(activity, "FROM selected. Now select TO.", Toast.LENGTH_SHORT).show();
+            // Update button text to "save to here"
+            updateTimelineDisplay(); // Refresh to show new button states
+        } else if (selectedTo == null) {
+            // Second selection - set TO
+            selectedTo = new TimelineSegmentSelection(block, index);
+            
+            // Validate and initiate save
+            initiateRangeSave();
+            
+            // Reset selection
+            selectedFrom = null;
+            selectedTo = null;
+            updateTimelineDisplay(); // Refresh to show original button states
+        }
+    }
+    
+    // Initiate save of selected range from activity blocks
+    private void initiateRangeSave() {
+        final Activity activity = getActivity();
+        if (activity == null || selectedFrom == null || selectedTo == null || echo == null) return;
+        
+        // Calculate time ranges based on activity block timestamps
+        long currentTime = System.currentTimeMillis();
+        
+        // Get the start and end times of the selected blocks
+        long fromStartTime = selectedFrom.block.startTimeMillis;
+        long toEndTime = selectedTo.block.endTimeMillis;
+        
+        // Convert to seconds ago (from current time)
+        float fromSecondsTmp = (currentTime - fromStartTime) / 1000f;
+        float toSecondsTmp = (currentTime - toEndTime) / 1000f;
+        
+        // Ensure correct order (fromSecondsAgo should be larger than toSecondsAgo)
+        if (fromSecondsTmp < toSecondsTmp) {
+            float temp = fromSecondsTmp;
+            fromSecondsTmp = toSecondsTmp;
+            toSecondsTmp = temp;
+        }
+        
+        final float fromSecondsAgo = fromSecondsTmp;
+        final float toSecondsAgo = toSecondsTmp;
+        
+        // Prompt for filename
+        View dialogView = View.inflate(activity, R.layout.dialog_save_recording, null);
+        EditText fileName = dialogView.findViewById(R.id.recording_name);
+        
+        new AlertDialog.Builder(activity)
+            .setView(dialogView)
+            .setTitle("Save Recording Range")
+            .setMessage(String.format("FROM: %s ago\nTO: %s ago", 
+                formatDuration((int)fromSecondsAgo), 
+                formatDuration((int)toSecondsAgo)))
+            .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    if(fileName.getText().toString().length() > 0){
+                        echo.dumpRecordingRange(fromSecondsAgo, toSecondsAgo, 
+                            new SaidItFragment.PromptFileReceiver(activity), 
+                            fileName.getText().toString());
+                    } else {
+                        Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+    
+    // Format duration in seconds to HH:MM:SS
+    private String formatDuration(int seconds) {
+        int hours = seconds / 3600;
+        int minutes = (seconds % 3600) / 60;
+        int secs = seconds % 60;
+        return String.format("%02d:%02d:%02d", hours, minutes, secs);
+    }
 
     final TimeFormat.Result timeFormatResult = new TimeFormat.Result();
 

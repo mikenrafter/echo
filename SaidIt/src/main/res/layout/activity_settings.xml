@@ -849,6 +849,78 @@
                 android:text="48 kHz"/>
         </LinearLayout>
 
+        <!-- Block Size Configuration -->
+        <TextView
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/block_size_label"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/block_size_description"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/block_size_5min"
+                android:text="05m"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"/>
+
+            <Button
+                android:id="@+id/block_size_10min"
+                android:text="10m"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"/>
+
+            <Button
+                android:id="@+id/block_size_15min"
+                android:text="15m"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"/>
+
+            <Button
+                android:id="@+id/block_size_30min"
+                android:text="30m"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"/>
+
+            <Button
+                android:id="@+id/block_size_60min"
+                android:text="60m"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"/>
+        </LinearLayout>
+
         <!-- Auto-Save Settings -->
         <TextView
             android:layout_marginTop="25dp"
@@ -940,96 +1012,33 @@
                 android:layout_marginLeft="5dp"/>
         </LinearLayout>
 
-            <!-- Export Effects Settings -->
-            <TextView
-                android:layout_marginTop="25dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_effects_label"
-                android:textSize="18sp"
-                android:textStyle="bold"/>
+        <!-- Export Effects Settings -->
+        <TextView
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_effects_label"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
 
-            <CheckBox
-                android:id="@+id/export_noise_suppression_enabled"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginTop="10dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_noise_suppression_enabled"/>
+        <CheckBox
+            android:id="@+id/export_noise_suppression_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_noise_suppression_enabled"/>
 
-            <TextView
-                style="@style/SmallText"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginBottom="10dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_noise_suppression_description"/>
-
-            <TextView
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginTop="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_noise_threshold_label"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="10dp"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <SeekBar
-                    android:id="@+id/export_noise_threshold_slider"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:max="5000"
-                    android:progress="500"/>
-
-                <TextView
-                    android:id="@+id/export_noise_threshold_value"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="500"
-                    android:textSize="16sp"
-                    android:layout_marginLeft="10dp"
-                    android:minWidth="60dp"/>
-            </LinearLayout>
-
-            <TextView
-                style="@style/SmallText"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginBottom="10dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_noise_threshold_hint"/>
-
-            <CheckBox
-                android:id="@+id/export_auto_normalize_enabled"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginTop="10dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_auto_normalize_enabled"/>
-
-            <TextView
-                style="@style/SmallText"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_marginBottom="10dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/export_auto_normalize_description"/>
+        <TextView
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_noise_suppression_description"/>
 
         <TextView
             android:layout_marginLeft="20dp"
@@ -1037,7 +1046,7 @@
             android:layout_marginTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/auto_save_duration_label"/>
+            android:text="@string/export_noise_threshold_label"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -1045,27 +1054,54 @@
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:layout_marginTop="5dp"
-            android:layout_marginBottom="15dp"
+            android:layout_marginBottom="10dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <EditText
-                android:id="@+id/auto_save_duration_input"
+            <SeekBar
+                android:id="@+id/export_noise_threshold_slider"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:inputType="number"
-                android:hint="600"
-                android:maxLength="5"
-                android:textSize="18sp"/>
+                android:max="5000"
+                android:progress="500"/>
 
             <TextView
+                android:id="@+id/export_noise_threshold_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text=" seconds"
-                android:textSize="18sp"
-                android:layout_marginLeft="5dp"/>
+                android:text="500"
+                android:textSize="16sp"
+                android:layout_marginLeft="10dp"
+                android:minWidth="60dp"/>
         </LinearLayout>
+
+        <TextView
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_noise_threshold_hint"/>
+
+        <CheckBox
+            android:id="@+id/export_auto_normalize_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_auto_normalize_enabled"/>
+
+        <TextView
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_auto_normalize_description"/>
 
         <Button
             android:id="@+id/settings_return"

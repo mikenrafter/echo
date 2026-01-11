@@ -95,6 +95,7 @@ public class SaidItService extends Service {
 
     // Live stats
     volatile int currentVolumeLevel = 0; // 0-32767
+    volatile int silenceThreshold = 500; // Threshold for activity detection
 
     // Silence groups tracking (service-level data models)
     static class SilenceGroup {
@@ -105,6 +106,44 @@ public class SaidItService extends Service {
             this.durationMillis = durationMillis;
         }
     }
+
+    // Timeline segment tracking for activity/silence display
+    public static class TimelineSegment {
+        public enum Type { ACTIVITY, SILENCE }
+        public Type type;
+        public long startTimeMillis;
+        public long endTimeMillis; // 0 if still ongoing
+        public int durationSeconds;
+        
+        public TimelineSegment(Type type, long startTimeMillis) {
+            this.type = type;
+            this.startTimeMillis = startTimeMillis;
+            this.endTimeMillis = 0;
+            this.durationSeconds = 0;
+        }
+        
+        public void end(long endTimeMillis) {
+            this.endTimeMillis = endTimeMillis;
+            this.durationSeconds = (int)((endTimeMillis - startTimeMillis) / 1000);
+        }
+        
+        public int getCurrentDuration() {
+            if (endTimeMillis == 0) {
+                return (int)((System.currentTimeMillis() - startTimeMillis) / 1000);
+            }
+            return durationSeconds;
+        }
+        
+        public boolean isOngoing() {
+            return endTimeMillis == 0;
+        }
+    }
+    
+    // Timeline tracking variables
+    private final java.util.List<TimelineSegment> timelineSegments = new java.util.ArrayList<>();
+    private TimelineSegment currentSegment = null;
+    private volatile int blockSizeMinutes = 5; // Default block size
+    private volatile int maxTimelineSegments = 50; // Keep last 50 segments max
 
     @Override
     public void onCreate() {
@@ -127,7 +166,7 @@ public class SaidItService extends Service {
         
         // Load and configure silence skipping
         boolean silenceSkipEnabled = preferences.getBoolean(SILENCE_SKIP_ENABLED_KEY, false);
-        int silenceThreshold = preferences.getInt(SILENCE_THRESHOLD_KEY, 500);
+        silenceThreshold = preferences.getInt(SILENCE_THRESHOLD_KEY, 500);
         int silenceSegmentCount = preferences.getInt(SILENCE_SEGMENT_COUNT_KEY, 3);
         audioMemory.configureSilenceSkipping(silenceSkipEnabled, silenceThreshold, silenceSegmentCount);
         Log.d(TAG, "Silence skipping: enabled=" + silenceSkipEnabled + ", threshold=" + silenceThreshold + ", segmentCount=" + silenceSegmentCount);
@@ -780,6 +819,8 @@ public class SaidItService extends Service {
             .putInt(SILENCE_SEGMENT_COUNT_KEY, segmentCount)
             .apply();
         
+        silenceThreshold = threshold; // Update the class field
+        
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -1048,6 +1089,9 @@ public class SaidItService extends Service {
                     if (abs > max) max = abs;
                 }
                 currentVolumeLevel = max;
+                
+                // Update timeline tracking
+                updateTimeline(max, silenceThreshold);
             }
 
             // Write to active recording file if recording
@@ -1289,6 +1333,8 @@ public class SaidItService extends Service {
     }
 
     public void getSilenceGroups(final SilenceGroupsCallback cb) {
+        if (cb == null) return;
+        
         final Handler sourceHandler = new Handler();
         audioHandler.post(new Runnable() {
             @Override
@@ -1316,11 +1362,84 @@ public class SaidItService extends Service {
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        cb.onGroups(snapshot);
+                        if (cb != null) {
+                            cb.onGroups(snapshot);
+                        }
                     }
                 });
             }
         });
+    }
+
+    // Timeline segments API for activity/silence display
+    public interface TimelineCallback {
+        void onTimeline(java.util.List<TimelineSegment> segments, TimelineSegment currentSegment, float totalMemorySeconds);
+    }
+
+    public void getTimeline(final TimelineCallback cb) {
+        if (cb == null) return;
+        
+        final Handler sourceHandler = new Handler();
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                synchronized (timelineSegments) {
+                    // Create a copy of the timeline segments
+                    final java.util.List<TimelineSegment> segmentsCopy = new java.util.ArrayList<>(timelineSegments);
+                    final TimelineSegment currentCopy = currentSegment;
+                    
+                    // Calculate total memory in seconds
+                    int bytesAvailable;
+                    if (gradientQualityEnabled) {
+                        bytesAvailable = audioMemoryHigh.countFilled() + 
+                                       audioMemoryMid.countFilled() + 
+                                       audioMemoryLow.countFilled();
+                    } else {
+                        bytesAvailable = audioMemory.countFilled();
+                    }
+                    final float totalMemorySec = bytesAvailable * getBytesToSeconds();
+                    
+                    sourceHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (cb != null) {
+                                cb.onTimeline(segmentsCopy, currentCopy, totalMemorySec);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+    
+    // Update timeline tracking based on volume level
+    private void updateTimeline(int volumeLevel, int silenceThreshold) {
+        synchronized (timelineSegments) {
+            boolean isActivity = volumeLevel >= silenceThreshold;
+            
+            if (currentSegment == null) {
+                // Start first segment
+                TimelineSegment.Type type = isActivity ? TimelineSegment.Type.ACTIVITY : TimelineSegment.Type.SILENCE;
+                currentSegment = new TimelineSegment(type, System.currentTimeMillis());
+            } else {
+                // Check if we need to transition to a new segment
+                TimelineSegment.Type currentType = currentSegment.type;
+                TimelineSegment.Type newType = isActivity ? TimelineSegment.Type.ACTIVITY : TimelineSegment.Type.SILENCE;
+                
+                if (currentType != newType) {
+                    // End current segment and start new one
+                    currentSegment.end(System.currentTimeMillis());
+                    timelineSegments.add(currentSegment);
+                    
+                    // Prune old segments to keep memory manageable
+                    while (timelineSegments.size() > maxTimelineSegments) {
+                        timelineSegments.remove(0);
+                    }
+                    
+                    currentSegment = new TimelineSegment(newType, System.currentTimeMillis());
+                }
+            }
+        }
     }
 
     public float getBytesToSeconds() {
