@@ -74,6 +74,7 @@ public class SaidItFragment extends Fragment {
     private TextView volumeMeterLabel;
     private int silenceThreshold = 500; // Default from settings
     private int silenceSegmentCount = 3; // Default from settings
+    private int blockSizeMinutes = 5; // Default block size for activity timeline
     
     // Activity/Silence timeline display
     private LinearLayout activityTimelineContainer;
@@ -81,13 +82,18 @@ public class SaidItFragment extends Fragment {
     private TimelineSegmentSelection selectedFrom = null;
     private TimelineSegmentSelection selectedTo = null;
     
-    // Track which segments are selected for save range
+    // Cache for timeline state to avoid unnecessary re-renders
+    private int lastSilenceGroupsCount = -1;
+    private long lastTimelineUpdate = 0;
+    private static final long TIMELINE_UPDATE_INTERVAL_MS = 2000; // Only update every 2 seconds at most
+    
+    // Track which activity blocks are selected for save range
     private static class TimelineSegmentSelection {
-        SaidItService.TimelineSegment segment;
+        ActivityBlockBuilder.ActivityBlock block;
         int index;
         
-        TimelineSegmentSelection(SaidItService.TimelineSegment segment, int index) {
-            this.segment = segment;
+        TimelineSegmentSelection(ActivityBlockBuilder.ActivityBlock block, int index) {
+            this.block = block;
             this.index = index;
         }
     }
@@ -249,6 +255,7 @@ public class SaidItFragment extends Fragment {
         android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
         silenceThreshold = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_THRESHOLD_KEY, 500);
         silenceSegmentCount = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
+        blockSizeMinutes = prefs.getInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
 
         ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
         rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
@@ -394,10 +401,8 @@ public class SaidItFragment extends Fragment {
                         if (volumeMeterLabel != null && volumeMeter != null) {
                             if (volumeLevel < silenceThreshold) {
                                 volumeMeterLabel.setText("SILENT");
-                                volumeMeter.setVisibility(View.GONE);
                             } else {
                                 volumeMeterLabel.setText(R.string.volume_meter_label);
-                                volumeMeter.setVisibility(View.VISIBLE);
                             }
                         }
                         if (skippedGroupsInfo != null) {
@@ -429,8 +434,15 @@ public class SaidItFragment extends Fragment {
                             }
                         }
                         
-                        // Update activity/silence timeline display
-                        updateTimelineDisplay();
+                        // Update timeline only when skipped groups count changes or enough time has passed
+                        // This prevents constant re-rendering that slows down the clock
+                        long now = System.currentTimeMillis();
+                        if (skippedGroups != lastSilenceGroupsCount || 
+                            (now - lastTimelineUpdate) > TIMELINE_UPDATE_INTERVAL_MS) {
+                            lastSilenceGroupsCount = skippedGroups;
+                            lastTimelineUpdate = now;
+                            updateTimelineDisplay();
+                        }
                     }
                 });
             }
@@ -440,113 +452,90 @@ public class SaidItFragment extends Fragment {
     };
     
     // Update the activity/silence timeline display
+    // Only updates when there are actual changes to silence groups
     private void updateTimelineDisplay() {
         if (echo == null || activityTimeline == null || activityTimelineContainer == null) return;
         
-        echo.getTimeline(new SaidItService.TimelineCallback() {
+        // Fetch silence groups to determine activity blocks
+        // Silence groups only change at 20s segment boundaries, not continuously
+        echo.getSilenceGroups(new SaidItService.SilenceGroupsCallback() {
             @Override
-            public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment, float totalMemorySeconds) {
-                final Activity activity = getActivity();
-                if (activity == null) return;
-                
-                activity.runOnUiThread(new Runnable() {
+            public void onGroups(java.util.List<SaidItService.SilenceGroup> silenceGroups) {
+                if (echo == null) return;
+                echo.getTimeline(new SaidItService.TimelineCallback() {
                     @Override
-                    public void run() {
-                        // Clear existing timeline
-                        activityTimeline.removeAllViews();
+                    public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment, float totalMemorySeconds) {
+                        final Activity activity = getActivity();
+                        if (activity == null) return;
                         
-                        // Only show timeline if we have segments or a current segment
-                        if ((segments == null || segments.isEmpty()) && currentSegment == null) {
-                            activityTimelineContainer.setVisibility(View.GONE);
-                            return;
-                        }
-                        
-                        activityTimelineContainer.setVisibility(View.VISIBLE);
-                        
-                        // Count silence segments to determine if we should show save buttons
-                        int silenceCount = 0;
-                        if (segments != null) {
-                            for (SaidItService.TimelineSegment seg : segments) {
-                                if (seg.type == SaidItService.TimelineSegment.Type.SILENCE) {
-                                    silenceCount++;
+                        activity.runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                // Use block size from settings
+                                long blockSizeMillis = blockSizeMinutes * 60 * 1000;
+                                
+                                // Build activity blocks from silence groups and memory span
+                                java.util.List<ActivityBlockBuilder.ActivityBlock> activityBlocks = 
+                                    ActivityBlockBuilder.buildActivityBlocks(
+                                        silenceGroups, totalMemorySeconds, blockSizeMillis
+                                    );
+                                
+                                // Check if we have any content to display
+                                boolean hasContent = (activityBlocks != null && !activityBlocks.isEmpty()) ||
+                                    (silenceGroups != null && !silenceGroups.isEmpty());
+                                
+                                if (!hasContent) {
+                                    // Keep container visible but show it's empty if it was visible before
+                                    if (activityTimelineContainer.getVisibility() == View.VISIBLE) {
+                                        activityTimeline.removeAllViews();
+                                    }
+                                    return;
+                                }
+                                
+                                // Make timeline always visible once we have content
+                                activityTimelineContainer.setVisibility(View.VISIBLE);
+                                
+                                // Clear and rebuild only when there are changes
+                                activityTimeline.removeAllViews();
+                                
+                                // Always show save buttons for activity blocks
+                                boolean showSaveButtons = true;
+                                
+                                // Display activity blocks in reverse order (newest first)
+                                if (activityBlocks != null && !activityBlocks.isEmpty()) {
+                                    for (int i = activityBlocks.size() - 1; i >= 0; i--) {
+                                        ActivityBlockBuilder.ActivityBlock block = activityBlocks.get(i);
+                                        addActivityBlockView(block, i, showSaveButtons);
+                                    }
+                                }
+                                
+                                // Display silence groups in reverse order (newest first)
+                                if (silenceGroups != null && !silenceGroups.isEmpty()) {
+                                    for (int i = silenceGroups.size() - 1; i >= 0; i--) {
+                                        SaidItService.SilenceGroup group = silenceGroups.get(i);
+                                        addSilenceGroupView(group);
+                                    }
                                 }
                             }
-                        }
-                        
-                        // Display current segment first if it exists and is activity
-                        if (currentSegment != null && currentSegment.type == SaidItService.TimelineSegment.Type.ACTIVITY) {
-                            addCurrentActivityView(currentSegment);
-                        } else if (currentSegment != null && currentSegment.type == SaidItService.TimelineSegment.Type.SILENCE) {
-                            addSilenceView(currentSegment, true);
-                        }
-                        
-                        // Display historical segments in reverse order (newest first)
-                        if (segments != null && !segments.isEmpty()) {
-                            for (int i = segments.size() - 1; i >= 0; i--) {
-                                SaidItService.TimelineSegment seg = segments.get(i);
-                                if (seg.type == SaidItService.TimelineSegment.Type.ACTIVITY) {
-                                    addActivityView(seg, i, silenceCount > 0);
-                                } else {
-                                    addSilenceView(seg, false);
-                                }
-                            }
-                        }
-                        
-                        // Calculate and display remaining time if segments don't account for all memory
-                        int totalSegmentSeconds = 0;
-                        if (currentSegment != null) {
-                            totalSegmentSeconds += currentSegment.getCurrentDuration();
-                        }
-                        if (segments != null) {
-                            for (SaidItService.TimelineSegment seg : segments) {
-                                totalSegmentSeconds += seg.durationSeconds;
-                            }
-                        }
-                        
-                        int remainingSeconds = (int)totalMemorySeconds - totalSegmentSeconds;
-                        if (remainingSeconds > 0) {
-                            addRemainingTimeView(remainingSeconds);
-                        }
+                        });
                     }
                 });
             }
         });
     }
     
-    // Add a view for the current activity segment
-    private void addCurrentActivityView(SaidItService.TimelineSegment segment) {
+    // Add a view for an activity block calculated from silence groups
+    private void addActivityBlockView(final ActivityBlockBuilder.ActivityBlock block, final int blockIndex, boolean showSaveButton) {
         final Activity activity = getActivity();
         if (activity == null) return;
         
-        LinearLayout segmentLayout = new LinearLayout(activity);
-        segmentLayout.setOrientation(LinearLayout.HORIZONTAL);
-        segmentLayout.setPadding(10, 5, 10, 5);
+        LinearLayout blockLayout = new LinearLayout(activity);
+        blockLayout.setOrientation(LinearLayout.HORIZONTAL);
+        blockLayout.setPadding(10, 5, 10, 5);
         
         TextView textView = new TextView(activity);
-        int duration = segment.getCurrentDuration();
-        String durationStr = formatDuration(duration);
-        textView.setText(String.format("Activity: %s [RECORDING]", durationStr));
-        textView.setTextSize(14);
-        textView.setLayoutParams(new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
-        
-        segmentLayout.addView(textView);
-        activityTimeline.addView(segmentLayout);
-    }
-    
-    // Add a view for a historical activity segment
-    private void addActivityView(final SaidItService.TimelineSegment segment, final int index, boolean showSaveButton) {
-        final Activity activity = getActivity();
-        if (activity == null) return;
-        
-        LinearLayout segmentLayout = new LinearLayout(activity);
-        segmentLayout.setOrientation(LinearLayout.HORIZONTAL);
-        segmentLayout.setPadding(10, 5, 10, 5);
-        
-        TextView textView = new TextView(activity);
-        String durationStr = formatDuration(segment.durationSeconds);
+        int durationSeconds = (int)(block.durationMillis / 1000);
+        String durationStr = formatDuration(durationSeconds);
         textView.setText(String.format("Activity: %s", durationStr));
         textView.setTextSize(14);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
@@ -555,7 +544,7 @@ public class SaidItFragment extends Fragment {
             1.0f
         ));
         
-        segmentLayout.addView(textView);
+        blockLayout.addView(textView);
         
         if (showSaveButton) {
             Button saveButton = new Button(activity);
@@ -570,63 +559,48 @@ public class SaidItFragment extends Fragment {
             saveButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    handleTimelineSegmentSelection(segment, index);
+                    handleActivityBlockSelection(block, blockIndex);
                 }
             });
             
-            segmentLayout.addView(saveButton);
+            blockLayout.addView(saveButton);
         }
         
-        activityTimeline.addView(segmentLayout);
+        activityTimeline.addView(blockLayout);
     }
     
-    // Add a view for a silence segment
-    private void addSilenceView(SaidItService.TimelineSegment segment, boolean isCurrent) {
+
+
+    // Add a view for a silence group from AudioMemory (20-second segments)
+    private void addSilenceGroupView(SaidItService.SilenceGroup group) {
         final Activity activity = getActivity();
         if (activity == null) return;
         
         TextView textView = new TextView(activity);
-        int duration = isCurrent ? segment.getCurrentDuration() : segment.durationSeconds;
-        String durationStr = formatDuration(duration);
-        String label = isCurrent ? String.format("Silence: %s [CURRENT]", durationStr) : String.format("Silence: %s", durationStr);
-        textView.setText(label);
+        long durationMillis = group.durationMillis;
+        int durationSeconds = (int)(durationMillis / 1000);
+        String durationStr = formatDuration(durationSeconds);
+        textView.setText(String.format("Silence: %s", durationStr));
         textView.setTextSize(14);
         textView.setPadding(10, 5, 10, 5);
         textView.setTextColor(0xFF888888);
         
         activityTimeline.addView(textView);
     }
-    
-    // Add a view for remaining time not accounted for by segments
-    private void addRemainingTimeView(int remainingSeconds) {
-        final Activity activity = getActivity();
-        if (activity == null) return;
-        
-        TextView textView = new TextView(activity);
-        String durationStr = formatDuration(remainingSeconds);
-        textView.setText(String.format("Remaining time: %s", durationStr));
-        textView.setTextSize(14);
-        textView.setPadding(10, 5, 10, 5);
-        textView.setTextColor(0xFFAAAAAA);
-        textView.setTypeface(null, android.graphics.Typeface.ITALIC);
-        
-        activityTimeline.addView(textView);
-    }
-    
     // Handle selection of a timeline segment for save range
-    private void handleTimelineSegmentSelection(SaidItService.TimelineSegment segment, int index) {
+    private void handleActivityBlockSelection(ActivityBlockBuilder.ActivityBlock block, int index) {
         final Activity activity = getActivity();
         if (activity == null) return;
         
         if (selectedFrom == null) {
             // First selection - set FROM
-            selectedFrom = new TimelineSegmentSelection(segment, index);
+            selectedFrom = new TimelineSegmentSelection(block, index);
             Toast.makeText(activity, "FROM selected. Now select TO.", Toast.LENGTH_SHORT).show();
             // Update button text to "save to here"
             updateTimelineDisplay(); // Refresh to show new button states
         } else if (selectedTo == null) {
             // Second selection - set TO
-            selectedTo = new TimelineSegmentSelection(segment, index);
+            selectedTo = new TimelineSegmentSelection(block, index);
             
             // Validate and initiate save
             initiateRangeSave();
@@ -638,33 +612,31 @@ public class SaidItFragment extends Fragment {
         }
     }
     
-    // Initiate save of selected range
+    // Initiate save of selected range from activity blocks
     private void initiateRangeSave() {
         final Activity activity = getActivity();
-        if (activity == null || selectedFrom == null || selectedTo == null) return;
+        if (activity == null || selectedFrom == null || selectedTo == null || echo == null) return;
         
-        // Calculate time ranges based on segment timestamps
+        // Calculate time ranges based on activity block timestamps
         long currentTime = System.currentTimeMillis();
         
-        // Get the start and end times of the selected segments
-        long fromStartTime = selectedFrom.segment.startTimeMillis;
-        long toEndTime = selectedTo.segment.endTimeMillis;
-        
-        // If the "to" segment is still ongoing, use current time
-        if (toEndTime == 0) {
-            toEndTime = currentTime;
-        }
+        // Get the start and end times of the selected blocks
+        long fromStartTime = selectedFrom.block.startTimeMillis;
+        long toEndTime = selectedTo.block.endTimeMillis;
         
         // Convert to seconds ago (from current time)
-        float fromSecondsAgo = (currentTime - fromStartTime) / 1000f;
-        float toSecondsAgo = (currentTime - toEndTime) / 1000f;
+        float fromSecondsTmp = (currentTime - fromStartTime) / 1000f;
+        float toSecondsTmp = (currentTime - toEndTime) / 1000f;
         
         // Ensure correct order (fromSecondsAgo should be larger than toSecondsAgo)
-        if (fromSecondsAgo < toSecondsAgo) {
-            float temp = fromSecondsAgo;
-            fromSecondsAgo = toSecondsAgo;
-            toSecondsAgo = temp;
+        if (fromSecondsTmp < toSecondsTmp) {
+            float temp = fromSecondsTmp;
+            fromSecondsTmp = toSecondsTmp;
+            toSecondsTmp = temp;
         }
+        
+        final float fromSecondsAgo = fromSecondsTmp;
+        final float toSecondsAgo = toSecondsTmp;
         
         // Prompt for filename
         View dialogView = View.inflate(activity, R.layout.dialog_save_recording, null);

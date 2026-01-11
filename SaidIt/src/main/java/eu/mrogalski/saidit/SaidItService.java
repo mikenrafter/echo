@@ -1333,6 +1333,8 @@ public class SaidItService extends Service {
     }
 
     public void getSilenceGroups(final SilenceGroupsCallback cb) {
+        if (cb == null) return;
+        
         final Handler sourceHandler = new Handler();
         audioHandler.post(new Runnable() {
             @Override
@@ -1360,7 +1362,9 @@ public class SaidItService extends Service {
                 sourceHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        cb.onGroups(snapshot);
+                        if (cb != null) {
+                            cb.onGroups(snapshot);
+                        }
                     }
                 });
             }
@@ -1373,6 +1377,8 @@ public class SaidItService extends Service {
     }
 
     public void getTimeline(final TimelineCallback cb) {
+        if (cb == null) return;
+        
         final Handler sourceHandler = new Handler();
         audioHandler.post(new Runnable() {
             @Override
@@ -1396,7 +1402,9 @@ public class SaidItService extends Service {
                     sourceHandler.post(new Runnable() {
                         @Override
                         public void run() {
-                            cb.onTimeline(segmentsCopy, currentCopy, totalMemorySec);
+                            if (cb != null) {
+                                cb.onTimeline(segmentsCopy, currentCopy, totalMemorySec);
+                            }
                         }
                     });
                 }

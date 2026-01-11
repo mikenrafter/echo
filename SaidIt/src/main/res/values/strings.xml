@@ -132,7 +132,7 @@
     <string name="silence_skipped_groups_label">Silent groups skipped: %1$d</string>
     <string name="silence_skipped_combined_label">%1$s skipped over %2$d groups</string>
     <string name="view_skipped_silence">View skipped silence log</string>
-    <string name="volume_meter_label">Live volume</string>
+    <string name="volume_meter_label">VOLUME</string>
     <string name="device_audio_label">Device Audio Recording</string>
     <string name="device_audio_enabled">Record device audio (system/app sounds)</string>
     <string name="device_audio_description">Records internal audio instead of microphone. Limitations: Requires Android 10+, may not work on all devices, some apps block audio capture, DRM-protected content excluded. Root or special ROM may be required.</string>
