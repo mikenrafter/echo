@@ -14,6 +14,9 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -41,6 +44,9 @@ public class SettingsActivity extends Activity {
     private final CustomMemoryApplyListener customMemoryApplyListener = new CustomMemoryApplyListener();
     private final StorageModeClickListener storageModeClickListener = new StorageModeClickListener();
 
+    private static final int MEDIA_PROJECTION_REQUEST_CODE = 1001;
+    private MediaProjectionManager mediaProjectionManager;
+    private boolean waitingForMediaProjection = false;
 
     final WorkingDialog dialog = new WorkingDialog();
 
@@ -137,8 +143,70 @@ public class SettingsActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        // Handle MediaProjection permission for both device audio and dual-source
+        if (requestCode == MEDIA_PROJECTION_REQUEST_CODE || requestCode == MEDIA_PROJECTION_REQUEST_CODE + 1) {
+            final boolean isDualSource = (requestCode == MEDIA_PROJECTION_REQUEST_CODE + 1);
+            final CheckBox deviceAudioEnabled = (CheckBox) findViewById(R.id.device_audio_enabled);
+            final CheckBox dualSourceEnabled = (CheckBox) findViewById(R.id.dual_source_enabled);
+            final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+            
+            if (resultCode == RESULT_OK && data != null) {
+                // User granted permission
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaProjectionManager != null) {
+                    MediaProjection mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data);
+                    
+                    if (service != null && mediaProjection != null) {
+                        service.setMediaProjection(mediaProjection);
+                        
+                        if (isDualSource) {
+                            prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, true).apply();
+                            service.setDualSourceRecording(true);
+                            if (dualSourceEnabled != null) {
+                                dualSourceEnabled.setChecked(true);
+                            }
+                            Toast.makeText(this,
+                                "Dual-source recording enabled (restart listening to apply)",
+                                Toast.LENGTH_LONG).show();
+                        } else {
+                            prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, true).apply();
+                            service.setDeviceAudioRecording(true);
+                            if (deviceAudioEnabled != null) {
+                                deviceAudioEnabled.setChecked(true);
+                            }
+                            Toast.makeText(this,
+                                "Device audio recording enabled (restart listening to apply)",
+                                Toast.LENGTH_LONG).show();
+                        }
+                    }
+                }
+            } else {
+                // User denied permission
+                if (isDualSource && dualSourceEnabled != null) {
+                    dualSourceEnabled.setChecked(false);
+                    prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, false).apply();
+                } else if (deviceAudioEnabled != null) {
+                    deviceAudioEnabled.setChecked(false);
+                    prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, false).apply();
+                }
+                Toast.makeText(this,
+                    "Screen recording permission denied. Device audio capture disabled.",
+                    Toast.LENGTH_LONG).show();
+            }
+            waitingForMediaProjection = false;
+        }
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Initialize MediaProjectionManager for device audio capture
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+        }
 
         final AssetManager assets = getAssets();
         final Resources resources = getResources();
@@ -574,13 +642,33 @@ public class SettingsActivity extends Activity {
             deviceAudioEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                 @Override
                 public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                    prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, isChecked).apply();
-                    if (service != null) {
-                        service.setDeviceAudioRecording(isChecked);
+                    if (isChecked) {
+                        // Request MediaProjection permission for device audio capture
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaProjectionManager != null) {
+                            waitingForMediaProjection = true;
+                            Intent captureIntent = mediaProjectionManager.createScreenCaptureIntent();
+                            startActivityForResult(captureIntent, MEDIA_PROJECTION_REQUEST_CODE);
+                            Toast.makeText(SettingsActivity.this,
+                                "Please grant screen recording permission for device audio capture",
+                                Toast.LENGTH_LONG).show();
+                        } else {
+                            // Android version too old
+                            deviceAudioEnabled.setChecked(false);
+                            Toast.makeText(SettingsActivity.this,
+                                "Device audio capture requires Android 10 or higher",
+                                Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        // Disabling device audio
+                        prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, false).apply();
+                        if (service != null) {
+                            service.setDeviceAudioRecording(false);
+                            service.setMediaProjection(null);
+                        }
+                        Toast.makeText(SettingsActivity.this,
+                            "Microphone recording enabled",
+                            Toast.LENGTH_SHORT).show();
                     }
-                    Toast.makeText(SettingsActivity.this,
-                        isChecked ? "Device audio recording enabled (restart listening)" : "Microphone recording enabled",
-                        Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -600,13 +688,30 @@ public class SettingsActivity extends Activity {
             dualSourceEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                 @Override
                 public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                    prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, isChecked).apply();
-                    if (service != null) {
-                        service.setDualSourceRecording(isChecked);
+                    if (isChecked) {
+                        // Dual-source needs MediaProjection for device audio
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaProjectionManager != null) {
+                            waitingForMediaProjection = true;
+                            Intent captureIntent = mediaProjectionManager.createScreenCaptureIntent();
+                            startActivityForResult(captureIntent, MEDIA_PROJECTION_REQUEST_CODE + 1); // Different code for dual-source
+                            Toast.makeText(SettingsActivity.this,
+                                "Please grant screen recording permission for device audio capture",
+                                Toast.LENGTH_LONG).show();
+                        } else {
+                            dualSourceEnabled.setChecked(false);
+                            Toast.makeText(SettingsActivity.this,
+                                "Dual-source recording requires Android 10 or higher",
+                                Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, false).apply();
+                        if (service != null) {
+                            service.setDualSourceRecording(false);
+                        }
+                        Toast.makeText(SettingsActivity.this,
+                            "Single-source recording",
+                            Toast.LENGTH_SHORT).show();
                     }
-                    Toast.makeText(SettingsActivity.this,
-                        isChecked ? "Dual-source recording enabled (restart listening)" : "Single-source recording",
-                        Toast.LENGTH_LONG).show();
                 }
             });
         }
