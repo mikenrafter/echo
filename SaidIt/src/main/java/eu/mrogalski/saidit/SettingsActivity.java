@@ -497,8 +497,8 @@ public class SettingsActivity extends Activity {
         thresholdSlider.setProgress(savedThreshold);
         thresholdValue.setText(String.valueOf(savedThreshold));
         activityEnabled.setChecked(prefs.getBoolean(SaidIt.ACTIVITY_DETECTION_ENABLED_KEY, false));
-        preBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300)));
-        postBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, 300)));
+        preBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, 20)));
+        postBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, 20)));
         autoDeleteInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_AUTO_DELETE_DAYS_KEY, 7)));
         highBitrate.setChecked(prefs.getBoolean(SaidIt.ACTIVITY_HIGH_BITRATE_KEY, false));
 
