@@ -323,7 +323,7 @@ public class SaidItService extends Service {
                             }
                         }
                     } else {
-                        Log.w(TAG, "MediaProjection not available or Android version < Q - device audio capture not supported");
+                        Log.w(TAG, "MediaProjection not available or Android version < 10 (API 29) - device audio capture not supported");
                     }
                     
                     Log.d(TAG, "Dual-source initialized: MIC=" + (audioRecord != null) + ", DEVICE=" + (deviceAudioRecord != null));
@@ -458,8 +458,11 @@ public class SaidItService extends Service {
                     deviceAudioRecord.release();
                     deviceAudioRecord = null;
                 }
-                // Note: MediaProjection should NOT be stopped here as it's managed by the activity
-                // The activity that created it is responsible for stopping it when appropriate
+                // Note: MediaProjection lifecycle is managed by the activity that created it.
+                // The activity is responsible for stopping it when appropriate.
+                // If the activity doesn't clean up properly, MediaProjection may leak resources
+                // and continue consuming system resources. Consider implementing a timeout or
+                // callback mechanism to detect and handle abandoned MediaProjection instances.
                 audioHandler.removeCallbacks(audioReader);
                 
                 // Deallocate memory rings
