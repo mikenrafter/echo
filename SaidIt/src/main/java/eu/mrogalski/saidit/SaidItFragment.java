@@ -276,8 +276,8 @@ public class SaidItFragment extends Fragment {
             timelinePrevButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    // Allow going to negative pages (future)
-                    currentPage--;
+                    // "← Older" means go back in time (increase page number for past)
+                    currentPage++;
                     renderPaginatedTimeline();
                 }
             });
@@ -287,8 +287,8 @@ public class SaidItFragment extends Fragment {
             timelineNextButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    // Allow going to positive pages (past) or back to 0 from negative
-                    currentPage++;
+                    // "Newer →" means go forward in time (decrease page number, can go negative for future)
+                    currentPage--;
                     renderPaginatedTimeline();
                 }
             });
@@ -657,12 +657,13 @@ public class SaidItFragment extends Fragment {
                     
                     // Buttons are always enabled now for navigating past/future
                     if (timelinePrevButton != null) {
-                        timelinePrevButton.setEnabled(true);
+                        // Prev (Older) button - can always go to past unless at max past pages
+                        int totalPages = getTotalPages();
+                        timelinePrevButton.setEnabled(currentPage < totalPages - 1);
                     }
                     if (timelineNextButton != null) {
-                        // Can always go forward unless at last page of past
-                        int totalPages = getTotalPages();
-                        timelineNextButton.setEnabled(currentPage < totalPages - 1);
+                        // Next (Newer) button - can always go toward future (negative pages)
+                        timelineNextButton.setEnabled(true);
                     }
                 }
                 
