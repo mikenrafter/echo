@@ -86,7 +86,7 @@ public class SaidItFragment extends Fragment {
     // Cache for timeline state to avoid unnecessary re-renders
     private int lastSilenceGroupsCount = -1;
     private long lastTimelineUpdate = 0;
-    private static final long TIMELINE_UPDATE_INTERVAL_MS = 2000; // Only update every 2 seconds at most
+    private static final long TIMELINE_UPDATE_INTERVAL_MS = 60000; // Only update every 60 seconds (1 minute) at most
     
     // Track which activity blocks are selected for save range
     private static class TimelineSegmentSelection {
@@ -252,11 +252,63 @@ public class SaidItFragment extends Fragment {
         activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
         activityTimeline = (LinearLayout) rootView.findViewById(R.id.activity_timeline);
         
+        // Setup activity block size spinner
+        android.widget.Spinner blockSizeSpinner = (android.widget.Spinner) rootView.findViewById(R.id.activity_block_size_spinner);
+        if (blockSizeSpinner != null) {
+            String[] blockSizeOptions = new String[] {
+                activity.getString(R.string.block_size_5min),
+                activity.getString(R.string.block_size_10min),
+                activity.getString(R.string.block_size_15min),
+                activity.getString(R.string.block_size_30min),
+                activity.getString(R.string.block_size_60min)
+            };
+            final int[] blockSizeValues = new int[] { 5, 10, 15, 30, 60 };
+            
+            android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                activity, android.R.layout.simple_spinner_item, blockSizeOptions);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            blockSizeSpinner.setAdapter(adapter);
+            
+            // Set current selection from preferences
+            android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+            blockSizeMinutes = prefs.getInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
+            
+            // Find the index of current value
+            int currentIndex = 0;
+            for (int i = 0; i < blockSizeValues.length; i++) {
+                if (blockSizeValues[i] == blockSizeMinutes) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            blockSizeSpinner.setSelection(currentIndex);
+            
+            // Handle selection changes
+            blockSizeSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                    int newBlockSize = blockSizeValues[position];
+                    if (newBlockSize != blockSizeMinutes) {
+                        blockSizeMinutes = newBlockSize;
+                        // Save to preferences
+                        android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+                        prefs.edit().putInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, blockSizeMinutes).apply();
+                        // Update timeline immediately
+                        updateTimelineDisplay();
+                    }
+                }
+                
+                @Override
+                public void onNothingSelected(android.widget.AdapterView<?> parent) {
+                    // Do nothing
+                }
+            });
+        }
+        
         // Load silence threshold and segment count from preferences
         android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
         silenceThreshold = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_THRESHOLD_KEY, 500);
         silenceSegmentCount = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
-        blockSizeMinutes = prefs.getInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
 
         ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
         rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
@@ -534,10 +586,19 @@ public class SaidItFragment extends Fragment {
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
         blockLayout.setPadding(10, 5, 10, 5);
         
+        // Make the entire row clickable
+        blockLayout.setClickable(true);
+        blockLayout.setFocusable(true);
+        blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
+        
+        // Format timestamps as hh:mm
+        long now = System.currentTimeMillis();
+        String startTime = formatTimeRange(block.startTimeMillis, now);
+        String endTime = formatTimeRange(block.endTimeMillis, now);
+        
         TextView textView = new TextView(activity);
-        int durationSeconds = (int)(block.durationMillis / 1000);
-        String durationStr = formatDuration(durationSeconds);
-        textView.setText(String.format("Activity: %s", durationStr));
+        // Display time range as "hh:mm-hh:mm" (left-aligned)
+        textView.setText(String.format("%s-%s", startTime, endTime));
         textView.setTextSize(14);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
             0,
@@ -549,7 +610,7 @@ public class SaidItFragment extends Fragment {
         
         if (showSaveButton) {
             Button saveButton = new Button(activity);
-            // Set button text based on selection state
+            // Set button text based on selection state (right-aligned)
             if (selectedFrom == null) {
                 saveButton.setText(R.string.save_from_here);
             } else {
@@ -557,7 +618,9 @@ public class SaidItFragment extends Fragment {
             }
             saveButton.setTextSize(12);
             saveButton.setPadding(20, 10, 20, 10);
-            saveButton.setOnClickListener(new View.OnClickListener() {
+            
+            // Make the entire row selectable
+            blockLayout.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     handleActivityBlockSelection(block, blockIndex);
@@ -568,6 +631,19 @@ public class SaidItFragment extends Fragment {
         }
         
         activityTimeline.addView(blockLayout);
+    }
+    
+    // Format time as hh:mm or "now"
+    private String formatTimeRange(long timeMillis, long nowMillis) {
+        if (Math.abs(timeMillis - nowMillis) < 60000) { // Within 1 minute
+            return "now";
+        }
+        
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTimeInMillis(timeMillis);
+        int hour = cal.get(java.util.Calendar.HOUR_OF_DAY);
+        int minute = cal.get(java.util.Calendar.MINUTE);
+        return String.format("%02d:%02d", hour, minute);
     }
     
 
