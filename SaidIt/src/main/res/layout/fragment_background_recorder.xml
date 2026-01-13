@@ -124,7 +124,8 @@
                         android:id="@+id/timeline_prev_button"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="◀ Older"
+                        android:text="← Older"
+                        android:contentDescription="View older timeline entries"
                         android:textSize="12sp"
                         android:padding="8dp"
                         android:layout_marginEnd="10dp"/>
@@ -142,7 +143,8 @@
                         android:id="@+id/timeline_next_button"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Newer ▶"
+                        android:text="Newer →"
+                        android:contentDescription="View newer timeline entries"
                         android:textSize="12sp"
                         android:padding="8dp"
                         android:layout_marginStart="10dp"/>

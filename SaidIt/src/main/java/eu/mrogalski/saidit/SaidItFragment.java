@@ -751,7 +751,8 @@ public class SaidItFragment extends Fragment {
     
     // Format time as hh:mm or "now"
     private String formatTimeRange(long timeMillis, long nowMillis) {
-        if (Math.abs(timeMillis - nowMillis) < 60000) { // Within 1 minute
+        long ONE_MINUTE_MS = 60000;
+        if (Math.abs(timeMillis - nowMillis) < ONE_MINUTE_MS) { // Within 1 minute
             return "now";
         }
         
