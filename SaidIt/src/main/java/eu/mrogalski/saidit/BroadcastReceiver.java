@@ -21,6 +21,10 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
     public static final String ACTION_SET_MEMORY_SIZE = "eu.mrogalski.saidit.action.SET_MEMORY_SIZE";
     public static final String ACTION_DUMP_RECORDING = "eu.mrogalski.saidit.action.DUMP_RECORDING";
     public static final String ACTION_DUMP_RECORDING_RANGE = "eu.mrogalski.saidit.action.DUMP_RECORDING_RANGE";
+    public static final String ACTION_SCHEDULE_RECORDING = "eu.mrogalski.saidit.action.SCHEDULE_RECORDING";
+    public static final String ACTION_ENABLE_VAD_TIME_WINDOW = "eu.mrogalski.saidit.action.ENABLE_VAD_TIME_WINDOW";
+    public static final String ACTION_DISABLE_VAD_TIME_WINDOW = "eu.mrogalski.saidit.action.DISABLE_VAD_TIME_WINDOW";
+    public static final String ACTION_SET_VAD_TIME_WINDOW = "eu.mrogalski.saidit.action.SET_VAD_TIME_WINDOW";
 
     // Intent extras
     public static final String EXTRA_MEMORY_SIZE_MB = "memory_size_mb";
@@ -28,6 +32,12 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
     public static final String EXTRA_FILENAME = "filename";
     public static final String EXTRA_FROM_SECONDS_AGO = "from_seconds_ago";
     public static final String EXTRA_TO_SECONDS_AGO = "to_seconds_ago";
+    public static final String EXTRA_START_TIME_MILLIS = "start_time_millis";
+    public static final String EXTRA_END_TIME_MILLIS = "end_time_millis";
+    public static final String EXTRA_VAD_START_HOUR = "vad_start_hour";
+    public static final String EXTRA_VAD_START_MINUTE = "vad_start_minute";
+    public static final String EXTRA_VAD_END_HOUR = "vad_end_hour";
+    public static final String EXTRA_VAD_END_MINUTE = "vad_end_minute";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -152,6 +162,42 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
                 if (rangeFilename == null) rangeFilename = "";
                 service.dumpRecordingRange(fromSeconds, toSeconds, null, rangeFilename);
                 Log.d(TAG, "Dumped recording range from " + fromSeconds + "s to " + toSeconds + "s ago");
+                break;
+                
+            case ACTION_SCHEDULE_RECORDING:
+                long startTimeMillis = intent.getLongExtra(EXTRA_START_TIME_MILLIS, System.currentTimeMillis());
+                long endTimeMillis = intent.getLongExtra(EXTRA_END_TIME_MILLIS, System.currentTimeMillis() + 3600000); // default 1 hour
+                String schedFilename = intent.getStringExtra(EXTRA_FILENAME);
+                if (schedFilename == null) schedFilename = "scheduled_recording";
+                
+                service.setupScheduledRecording(startTimeMillis, endTimeMillis, schedFilename);
+                Log.d(TAG, "Scheduled recording from " + startTimeMillis + " to " + endTimeMillis);
+                break;
+                
+            case ACTION_ENABLE_VAD_TIME_WINDOW:
+                service.setVadTimeWindowEnabled(true);
+                Log.d(TAG, "Enabled VAD time window");
+                break;
+                
+            case ACTION_DISABLE_VAD_TIME_WINDOW:
+                service.setVadTimeWindowEnabled(false);
+                Log.d(TAG, "Disabled VAD time window");
+                break;
+                
+            case ACTION_SET_VAD_TIME_WINDOW:
+                int startHour = intent.getIntExtra(EXTRA_VAD_START_HOUR, 22); // default 10 PM
+                int startMinute = intent.getIntExtra(EXTRA_VAD_START_MINUTE, 0);
+                int endHour = intent.getIntExtra(EXTRA_VAD_END_HOUR, 6); // default 6 AM
+                int endMinute = intent.getIntExtra(EXTRA_VAD_END_MINUTE, 0);
+                
+                // Validate hours and minutes
+                if (startHour < 0 || startHour > 23) startHour = 22;
+                if (startMinute < 0 || startMinute > 59) startMinute = 0;
+                if (endHour < 0 || endHour > 23) endHour = 6;
+                if (endMinute < 0 || endMinute > 59) endMinute = 0;
+                
+                service.setVadTimeWindow(startHour, startMinute, endHour, endMinute);
+                Log.d(TAG, "Set VAD time window: " + startHour + ":" + startMinute + " to " + endHour + ":" + endMinute);
                 break;
 
             default:

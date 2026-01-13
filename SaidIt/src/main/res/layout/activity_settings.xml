@@ -33,6 +33,35 @@
             android:layout_height="wrap_content"
             android:text="@string/audio_memory_change"/>
 
+        <!-- Memory Settings Section -->
+        <TextView
+            android:id="@+id/header_memory"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▼ Memory Settings"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_memory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+        <TextView
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/audio_memory_change"/>
+
         <TextView
             android:layout_marginTop="20dp"
             android:layout_marginBottom="5dp"
@@ -134,6 +163,30 @@
             android:layout_height="wrap_content"
             android:text="@string/custom_memory_description"/>
 
+        </LinearLayout>
+
+        <!-- Storage Settings Section -->
+        <TextView
+            android:id="@+id/header_storage"
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▼ Storage Settings"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_storage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
         <TextView
             android:layout_marginTop="20dp"
             android:layout_marginBottom="5dp"
@@ -176,6 +229,172 @@
             android:layout_height="wrap_content"
             android:text="@string/storage_mode_description"/>
 
+        <!-- Auto-Delete for Auto-Saves -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Auto-delete automatic saves"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="after "
+                android:textSize="18sp"
+                android:layout_marginRight="5dp"/>
+
+            <EditText
+                android:id="@+id/auto_save_autodelete_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:hint="default: 7"
+                android:maxLength="5"
+                android:textSize="18sp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" days"
+                android:textSize="18sp"
+                android:layout_marginLeft="5dp"/>
+        </LinearLayout>
+
+        <!-- Auto-Delete for Activity Detection -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Auto-delete VAD recordings"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="15dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="after "
+                android:textSize="18sp"
+                android:layout_marginRight="5dp"/>
+
+            <EditText
+                android:id="@+id/activity_autodelete_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:hint="default: 7"
+                android:maxLength="5"
+                android:textSize="18sp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" days"
+                android:textSize="18sp"
+                android:layout_marginLeft="5dp"/>
+        </LinearLayout>
+
+        <!-- Auto-Save Settings -->
+        <TextView
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/auto_save_label"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+
+        <CheckBox
+            android:id="@+id/auto_save_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/auto_save_enabled"/>
+
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/auto_save_duration_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <EditText
+                android:id="@+id/auto_save_duration_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:hint="default: 600"
+                android:maxLength="5"
+                android:textSize="18sp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" seconds"
+                android:textSize="18sp"
+                android:layout_marginLeft="5dp"/>
+        </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Quality Settings Section -->
+        <TextView
+            android:id="@+id/header_quality"
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▼ Quality Settings"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_quality"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
         <TextView
             android:layout_marginTop="20dp"
@@ -224,68 +443,295 @@
             android:layout_height="wrap_content"
             android:text="@string/audio_quality_description"/>
 
-        <!--
+        <!-- Gradient Quality Recording -->
         <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
             android:layout_marginTop="20dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="C) Rodzaj kompresji"/>
+            android:text="@string/gradient_quality_label"
+            android:textSize="16sp"
+            android:textStyle="bold"/>
+
+        <CheckBox
+            android:id="@+id/gradient_quality_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_quality_enabled"/>
+
+        <TextView
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_quality_description"/>
+
+        <!-- High Quality (First 5 minutes) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_high_quality_label"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/gradient_high_8khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="8 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_high_16khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="16 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_high_48khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"
+                android:text="48 kHz"/>
+        </LinearLayout>
+
+        <!-- Mid Quality (Next 15 minutes) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
             android:layout_marginTop="10dp"
-            android:gravity="center"
-            android:measureWithLargestChild="true"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_mid_quality_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/gradient_mid_8khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="8 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_mid_16khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="16 kHz"/>
+
+            <Button
+                android:id="@+id/gradient_mid_48khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"
+                android:text="48 kHz"/>
+        </LinearLayout>
+
+        <!-- Low Quality (Everything after 20 minutes) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/gradient_low_quality_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
             android:layout_marginBottom="10dp"
             android:orientation="horizontal">
 
             <Button
-                android:id="@+id/compress_3gp"
-                android:text="3GP"
-                android:textSize="23sp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:id="@+id/gradient_low_8khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="8 kHz"/>
 
             <Button
-                android:id="@+id/compress_mp4"
-                android:text="MP4"
-                android:textSize="23sp"
-                android:layout_width="wrap_content"
+                android:id="@+id/gradient_low_16khz"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="10dp"
-                android:layout_marginRight="10dp" />
+                android:layout_weight="1"
+                android:layout_marginRight="5dp"
+                style="@style/Button"
+                android:text="16 kHz"/>
+
             <Button
-                android:id="@+id/compress_wav"
-                android:text="WAV"
-                android:textSize="23sp"
+                android:id="@+id/gradient_low_48khz"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Button"
+                android:text="48 kHz"/>
+        </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Audio Effects Section -->
+        <TextView
+            android:id="@+id/header_silence"
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▼ Audio Effects"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_silence"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+
+        <!-- Export Effects (Applied During Export) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_effects_label"
+            android:textSize="16sp"
+            android:textStyle="bold"/>
+
+        <CheckBox
+            android:id="@+id/export_noise_suppression_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_noise_suppression_enabled"/>
+
+        <TextView
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_noise_suppression_description"/>
+
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_noise_threshold_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <SeekBar
+                android:id="@+id/export_noise_threshold_slider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="5000"
+                android:progress="500"/>
+
+            <TextView
+                android:id="@+id/export_noise_threshold_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/green_button" />
+                android:text="500"
+                android:textSize="16sp"
+                android:layout_marginLeft="10dp"
+                android:minWidth="60dp"/>
         </LinearLayout>
 
         <TextView
             style="@style/SmallText"
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
-            android:layout_marginBottom="5dp"
+            android:layout_marginBottom="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/compress_help"/>
+            android:text="@string/export_noise_threshold_hint"/>
 
-        -->
+        <CheckBox
+            android:id="@+id/export_auto_normalize_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_auto_normalize_enabled"/>
 
-        <!-- Silence Skipping Settings -->
         <TextView
-            android:layout_marginTop="25dp"
+            style="@style/SmallText"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginBottom="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/export_auto_normalize_description"/>
+
+        <!-- Silence Skipping (During Recording) -->
+        <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="15dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/silence_skip_label"
-            android:textSize="18sp"
+            android:text="Silence Skipping (During Recording)"
+            android:textSize="16sp"
             android:textStyle="bold"/>
 
         <CheckBox
@@ -385,16 +831,30 @@
                 android:layout_marginLeft="10dp"
                 android:minWidth="50dp"/>
         </LinearLayout>
+        
+        </LinearLayout>
 
-        <!-- Device Audio Recording Settings -->
+        <!-- Device Audio Section -->
         <TextView
+            android:id="@+id/header_device_audio"
             android:layout_marginTop="25dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/device_audio_label"
+            android:text="▼ Device Audio Recording"
             android:textSize="18sp"
-            android:textStyle="bold"/>
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_device_audio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
         <CheckBox
             android:id="@+id/device_audio_enabled"
@@ -413,16 +873,30 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/device_audio_description"/>
+        
+        </LinearLayout>
 
-        <!-- Dual-Source Recording Settings -->
+        <!-- Dual-Source Recording Section -->
         <TextView
+            android:id="@+id/header_dual_source"
             android:layout_marginTop="25dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/dual_source_label"
+            android:text="▼ Dual-Source Recording (Advanced)"
             android:textSize="18sp"
-            android:textStyle="bold"/>
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_dual_source"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
         <CheckBox
             android:id="@+id/dual_source_enabled"
@@ -511,6 +985,30 @@
                 android:layout_weight="1"
                 style="@style/Button"/>
         </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Voice Activity Detection (VAD) Section -->
+        <TextView
+            android:id="@+id/header_vad"
+            android:layout_marginTop="25dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▼ Voice Activity Detection (VAD)"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_vad"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
         <!-- Activity detection settings -->
         <TextView
@@ -645,42 +1143,6 @@
                 android:layout_marginLeft="5dp"/>
         </LinearLayout>
 
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/activity_autodelete_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/activity_autodelete_input"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:hint="default: 7"
-                android:maxLength="5"
-                android:textSize="18sp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text=" days"
-                android:textSize="18sp"
-                android:layout_marginLeft="5dp"/>
-        </LinearLayout>
-
         <CheckBox
             android:id="@+id/activity_high_bitrate"
             android:layout_marginLeft="20dp"
@@ -690,174 +1152,25 @@
             android:layout_height="wrap_content"
             android:text="@string/activity_high_bitrate_label"/>
 
-        <!-- Gradient Quality Recording -->
+        <!-- VAD Time Window Settings -->
         <TextView
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
             android:layout_marginTop="25dp"
-            android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/gradient_quality_label"
+            android:text="@string/vad_time_window_label"
             android:textSize="18sp"
             android:textStyle="bold"/>
 
         <CheckBox
-            android:id="@+id/gradient_quality_enabled"
-            android:layout_marginLeft="10dp"
-            android:layout_marginRight="10dp"
-            android:layout_marginTop="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_quality_enabled"/>
-
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:text="@string/gradient_quality_description"/>
-
-        <!-- High Quality (First 5 minutes) -->
-        <TextView
+            android:id="@+id/vad_time_window_enabled"
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:layout_marginTop="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/gradient_high_quality_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/gradient_high_8khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="8 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_high_16khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="16 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_high_48khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"
-                android:text="48 kHz"/>
-        </LinearLayout>
-
-        <!-- Mid Quality (Next 15 minutes) -->
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_mid_quality_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/gradient_mid_8khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="8 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_mid_16khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="16 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_mid_48khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"
-                android:text="48 kHz"/>
-        </LinearLayout>
-
-        <!-- Low Quality (Everything after 20 minutes) -->
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gradient_low_quality_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginBottom="10dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/gradient_low_8khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="8 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_low_16khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"
-                android:text="16 kHz"/>
-
-            <Button
-                android:id="@+id/gradient_low_48khz"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"
-                android:text="48 kHz"/>
-        </LinearLayout>
-
-        <!-- Block Size Configuration -->
-        <TextView
-            android:layout_marginTop="25dp"
-            android:layout_marginBottom="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/block_size_label"
-            android:textSize="18sp"
-            android:textStyle="bold"/>
+            android:text="@string/vad_time_window_enabled"/>
 
         <TextView
             style="@style/SmallText"
@@ -866,87 +1179,15 @@
             android:layout_marginBottom="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/block_size_description"/>
+            android:text="@string/vad_time_window_description"/>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginBottom="10dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/block_size_5min"
-                android:text="05m"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"/>
-
-            <Button
-                android:id="@+id/block_size_10min"
-                android:text="10m"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"/>
-
-            <Button
-                android:id="@+id/block_size_15min"
-                android:text="15m"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"/>
-
-            <Button
-                android:id="@+id/block_size_30min"
-                android:text="30m"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginRight="5dp"
-                style="@style/Button"/>
-
-            <Button
-                android:id="@+id/block_size_60min"
-                android:text="60m"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                style="@style/Button"/>
-        </LinearLayout>
-
-        <!-- Auto-Save Settings -->
         <TextView
-            android:layout_marginTop="25dp"
-            android:layout_marginBottom="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/auto_save_label"
-            android:textSize="18sp"
-            android:textStyle="bold"/>
-
-        <CheckBox
-            android:id="@+id/auto_save_enabled"
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:layout_marginTop="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/auto_save_enabled"/>
-
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/auto_save_duration_label"/>
+            android:text="@string/vad_start_time_label"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -954,145 +1195,105 @@
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:layout_marginTop="5dp"
-            android:layout_marginBottom="10dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
             <EditText
-                android:id="@+id/auto_save_duration_input"
+                android:id="@+id/vad_start_hour"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:inputType="number"
-                android:hint="default: 600"
-                android:maxLength="5"
-                android:textSize="18sp"/>
+                android:hint="Hour (0-23)"
+                android:maxLength="2"
+                android:textSize="16sp"/>
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text=" seconds"
-                android:textSize="18sp"
-                android:layout_marginLeft="5dp"/>
-        </LinearLayout>
-
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/auto_save_autodelete_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="15dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <EditText
-                android:id="@+id/auto_save_autodelete_input"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:inputType="number"
-                android:hint="default: 7"
-                android:maxLength="5"
-                android:textSize="18sp"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text=" days"
-                android:textSize="18sp"
-                android:layout_marginLeft="5dp"/>
-        </LinearLayout>
-
-        <!-- Export Effects Settings -->
-        <TextView
-            android:layout_marginTop="25dp"
-            android:layout_marginBottom="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/export_effects_label"
-            android:textSize="18sp"
-            android:textStyle="bold"/>
-
-        <CheckBox
-            android:id="@+id/export_noise_suppression_enabled"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/export_noise_suppression_enabled"/>
-
-        <TextView
-            style="@style/SmallText"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginBottom="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/export_noise_suppression_description"/>
-
-        <TextView
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/export_noise_threshold_label"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="10dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <SeekBar
-                android:id="@+id/export_noise_threshold_slider"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:max="5000"
-                android:progress="500"/>
-
-            <TextView
-                android:id="@+id/export_noise_threshold_value"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="500"
+                android:text=":"
                 android:textSize="16sp"
-                android:layout_marginLeft="10dp"
-                android:minWidth="60dp"/>
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"/>
+
+            <EditText
+                android:id="@+id/vad_start_minute"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:hint="Min (0-59)"
+                android:maxLength="2"
+                android:textSize="16sp"/>
         </LinearLayout>
 
         <TextView
-            style="@style/SmallText"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_marginBottom="10dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/export_noise_threshold_hint"/>
-
-        <CheckBox
-            android:id="@+id/export_auto_normalize_enabled"
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
             android:layout_marginTop="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/export_auto_normalize_enabled"/>
+            android:text="@string/vad_end_time_label"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <EditText
+                android:id="@+id/vad_end_hour"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:hint="Hour (0-23)"
+                android:maxLength="2"
+                android:textSize="16sp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=":"
+                android:textSize="16sp"
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"/>
+
+            <EditText
+                android:id="@+id/vad_end_minute"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="number"
+                android:hint="Min (0-59)"
+                android:maxLength="2"
+                android:textSize="16sp"/>
+        </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Dark Mode Section -->
+        <TextView
+            android:layout_marginTop="20dp"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textStyle="bold"
+            android:text="@string/dark_mode_label"/>
+
+        <CheckBox
+            android:id="@+id/dark_mode_enabled"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/dark_mode_enabled"/>
 
         <TextView
             style="@style/SmallText"
@@ -1101,7 +1302,7 @@
             android:layout_marginBottom="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/export_auto_normalize_description"/>
+            android:text="@string/dark_mode_description"/>
 
         <Button
             android:id="@+id/settings_return"

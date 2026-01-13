@@ -77,25 +77,40 @@ public class SaidItFragment extends Fragment {
     private int silenceSegmentCount = 3; // Default from settings
     private int blockSizeMinutes = 5; // Default block size for activity timeline
     
+    // Pagination state
+    private int currentPage = 0; // Can be negative for future pages
+    private static final int ITEMS_PER_PAGE = 10;
+    private java.util.List<ActivityBlockBuilder.ActivityBlock> allActivityBlocks = new java.util.ArrayList<>();
+    private java.util.List<ActivityBlockBuilder.ActivityBlock> futureActivityBlocks = new java.util.ArrayList<>(); // For scheduled recordings
+    
     // Activity/Silence timeline display
     private LinearLayout activityTimelineContainer;
     private LinearLayout activityTimeline;
+    private LinearLayout timelinePaginationControls;
+    private Button timelinePrevButton;
+    private Button timelineNextButton;
+    private TextView timelinePageInfo;
     private TimelineSegmentSelection selectedFrom = null;
     private TimelineSegmentSelection selectedTo = null;
     
     // Cache for timeline state to avoid unnecessary re-renders
     private int lastSilenceGroupsCount = -1;
     private long lastTimelineUpdate = 0;
-    private static final long TIMELINE_UPDATE_INTERVAL_MS = 2000; // Only update every 2 seconds at most
+    private static final long TIMELINE_UPDATE_INTERVAL_MS = 60000; // Only update every 60 seconds (1 minute) at most
     
     // Track which activity blocks are selected for save range
+    // Store absolute timestamps instead of just block references for robustness
     private static class TimelineSegmentSelection {
         ActivityBlockBuilder.ActivityBlock block;
         int index;
+        long startTimeMillis;  // Store absolute start time
+        long endTimeMillis;    // Store absolute end time
         
         TimelineSegmentSelection(ActivityBlockBuilder.ActivityBlock block, int index) {
             this.block = block;
             this.index = index;
+            this.startTimeMillis = block.startTimeMillis;
+            this.endTimeMillis = block.endTimeMillis;
         }
     }
 
@@ -251,12 +266,91 @@ public class SaidItFragment extends Fragment {
         // Activity/Silence timeline views
         activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
         activityTimeline = (LinearLayout) rootView.findViewById(R.id.activity_timeline);
+        timelinePaginationControls = (LinearLayout) rootView.findViewById(R.id.timeline_pagination_controls);
+        timelinePrevButton = (Button) rootView.findViewById(R.id.timeline_prev_button);
+        timelineNextButton = (Button) rootView.findViewById(R.id.timeline_next_button);
+        timelinePageInfo = (TextView) rootView.findViewById(R.id.timeline_page_info);
+        
+        // Setup pagination button listeners
+        if (timelinePrevButton != null) {
+            timelinePrevButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    // "← Older" means go back in time (increase page number for past)
+                    currentPage++;
+                    renderPaginatedTimeline();
+                }
+            });
+        }
+        
+        if (timelineNextButton != null) {
+            timelineNextButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    // "Newer →" means go forward in time (decrease page number, can go negative for future)
+                    currentPage--;
+                    renderPaginatedTimeline();
+                }
+            });
+        }
+        
+        // Setup activity block size spinner
+        android.widget.Spinner blockSizeSpinner = (android.widget.Spinner) rootView.findViewById(R.id.activity_block_size_spinner);
+        if (blockSizeSpinner != null) {
+            String[] blockSizeOptions = new String[] {
+                activity.getString(R.string.block_size_5min),
+                activity.getString(R.string.block_size_10min),
+                activity.getString(R.string.block_size_15min),
+                activity.getString(R.string.block_size_30min),
+                activity.getString(R.string.block_size_60min)
+            };
+            final int[] blockSizeValues = new int[] { 5, 10, 15, 30, 60 };
+            
+            android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                activity, android.R.layout.simple_spinner_item, blockSizeOptions);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            blockSizeSpinner.setAdapter(adapter);
+            
+            // Set current selection from preferences
+            android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+            blockSizeMinutes = prefs.getInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
+            
+            // Find the index of current value
+            int currentIndex = 0;
+            for (int i = 0; i < blockSizeValues.length; i++) {
+                if (blockSizeValues[i] == blockSizeMinutes) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            blockSizeSpinner.setSelection(currentIndex);
+            
+            // Handle selection changes
+            blockSizeSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                    int newBlockSize = blockSizeValues[position];
+                    if (newBlockSize != blockSizeMinutes) {
+                        blockSizeMinutes = newBlockSize;
+                        // Save to preferences
+                        android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+                        prefs.edit().putInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, blockSizeMinutes).apply();
+                        // Update timeline immediately
+                        updateTimelineDisplay();
+                    }
+                }
+                
+                @Override
+                public void onNothingSelected(android.widget.AdapterView<?> parent) {
+                    // Do nothing
+                }
+            });
+        }
         
         // Load silence threshold and segment count from preferences
         android.content.SharedPreferences prefs = activity.getSharedPreferences(eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
         silenceThreshold = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_THRESHOLD_KEY, 500);
         silenceSegmentCount = prefs.getInt(eu.mrogalski.saidit.SaidIt.SILENCE_SEGMENT_COUNT_KEY, 3);
-        blockSizeMinutes = prefs.getInt(eu.mrogalski.saidit.SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
 
         ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
         rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
@@ -481,8 +575,14 @@ public class SaidItFragment extends Fragment {
                                         silenceGroups, totalMemorySeconds, blockSizeMillis
                                     );
                                 
+                                // Store all blocks for pagination
+                                allActivityBlocks = activityBlocks != null ? activityBlocks : new java.util.ArrayList<>();
+                                
+                                // Reset to first page when timeline is updated
+                                currentPage = 0;
+                                
                                 // Check if we have any content to display
-                                boolean hasContent = (activityBlocks != null && !activityBlocks.isEmpty()) ||
+                                boolean hasContent = !allActivityBlocks.isEmpty() ||
                                     (silenceGroups != null && !silenceGroups.isEmpty());
                                 
                                 if (!hasContent) {
@@ -496,27 +596,8 @@ public class SaidItFragment extends Fragment {
                                 // Make timeline always visible once we have content
                                 activityTimelineContainer.setVisibility(View.VISIBLE);
                                 
-                                // Clear and rebuild only when there are changes
-                                activityTimeline.removeAllViews();
-                                
-                                // Always show save buttons for activity blocks
-                                boolean showSaveButtons = true;
-                                
-                                // Display activity blocks in reverse order (newest first)
-                                if (activityBlocks != null && !activityBlocks.isEmpty()) {
-                                    for (int i = activityBlocks.size() - 1; i >= 0; i--) {
-                                        ActivityBlockBuilder.ActivityBlock block = activityBlocks.get(i);
-                                        addActivityBlockView(block, i, showSaveButtons);
-                                    }
-                                }
-                                
-                                // Display silence groups in reverse order (newest first)
-                                if (silenceGroups != null && !silenceGroups.isEmpty()) {
-                                    for (int i = silenceGroups.size() - 1; i >= 0; i--) {
-                                        SaidItService.SilenceGroup group = silenceGroups.get(i);
-                                        addSilenceGroupView(group);
-                                    }
-                                }
+                                // Render paginated timeline
+                                renderPaginatedTimeline();
                             }
                         });
                     }
@@ -525,20 +606,153 @@ public class SaidItFragment extends Fragment {
         });
     }
     
+    // Calculate total number of pages
+    private int getTotalPages() {
+        if (allActivityBlocks.isEmpty()) return 1;
+        // Always show first (newest) and last (oldest), so paginate the middle items
+        int middleItems = Math.max(0, allActivityBlocks.size() - 2);
+        return (middleItems + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+    }
+    
+    // Render the paginated timeline
+    private void renderPaginatedTimeline() {
+        final Activity activity = getActivity();
+        if (activity == null || activityTimeline == null) return;
+        
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                // Clear and rebuild
+                activityTimeline.removeAllViews();
+                
+                // Determine if we're in future pages (negative) or past pages (positive)
+                boolean isFuturePage = currentPage < 0;
+                
+                // Always show save buttons for activity blocks
+                boolean showSaveButtons = true;
+                
+                // Show/hide pagination controls
+                if (timelinePaginationControls != null) {
+                    
+                    // Update page info
+                    if (timelinePageInfo != null) {
+                        if (isFuturePage) {
+                            timelinePageInfo.setText(String.format("Future Page %d", Math.abs(currentPage)));
+                        } else {
+                            int totalPages = getTotalPages();
+                            timelinePageInfo.setText(String.format("Page %d of %d", currentPage + 1, totalPages));
+                        }
+                    }
+                    
+                    // Buttons are always enabled now for navigating past/future
+                    if (timelinePrevButton != null) {
+                        // Prev (Older) button - can always go to past unless at max past pages
+                        int totalPages = getTotalPages();
+                        timelinePrevButton.setEnabled(currentPage < totalPages);
+                    }
+                    if (timelineNextButton != null) {
+                        // Next (Newer) button - can always go toward future (negative pages)
+                        timelineNextButton.setEnabled(true);
+                    }
+                }
+                
+                if (isFuturePage) {
+                    // Render future pages for scheduling
+                    renderFuturePage(Math.abs(currentPage), showSaveButtons);
+                } else {
+                    // Render past pages (existing logic)
+                    renderPastPage(showSaveButtons);
+                }
+            }
+        });
+    }
+    
+    // Render future page for scheduled recordings
+    private void renderFuturePage(int futurePageNumber, boolean showSaveButtons) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        // Generate future time slots for scheduling
+        long now = System.currentTimeMillis();
+        long blockSizeMillis = blockSizeMinutes * 60 * 1000;
+        
+        // Calculate future blocks
+        int blocksPerPage = ITEMS_PER_PAGE;
+        int startBlockOffset = (futurePageNumber - 1) * blocksPerPage;
+        int endBlockOffset = startBlockOffset + blocksPerPage;
+        
+        for (int i = startBlockOffset; i < endBlockOffset; i++) {
+            long blockStartTime = now + (i * blockSizeMillis);
+            long blockEndTime = blockStartTime + blockSizeMillis;
+            
+            ActivityBlockBuilder.ActivityBlock futureBlock = 
+                new ActivityBlockBuilder.ActivityBlock(blockStartTime, blockEndTime);
+            futureBlock.blockIndex = -i - 1; // Negative indices for future blocks
+            
+            addFutureActivityBlockView(futureBlock, futureBlock.blockIndex, showSaveButtons);
+        }
+    }
+    
+    // Render past page (existing pagination logic)
+    private void renderPastPage(boolean showSaveButtons) {
+        // Calculate pagination
+        int totalBlocks = allActivityBlocks.size();
+        int totalPages = getTotalPages();
+        
+        // Display blocks in reverse order (newest first)
+        // First block (newest) is always shown
+        if (totalBlocks > 0) {
+            ActivityBlockBuilder.ActivityBlock firstBlock = allActivityBlocks.get(totalBlocks - 1);
+            addActivityBlockView(firstBlock, totalBlocks - 1, showSaveButtons);
+        }
+        
+        // Middle blocks (paginated)
+        if (totalBlocks > 2) {
+            int startIdx = totalBlocks - 2 - (currentPage * ITEMS_PER_PAGE);
+            int endIdx = Math.max(1, startIdx - ITEMS_PER_PAGE + 1);
+            
+            for (int i = startIdx; i >= endIdx && i >= 1; i--) {
+                ActivityBlockBuilder.ActivityBlock block = allActivityBlocks.get(i);
+                addActivityBlockView(block, i, showSaveButtons);
+            }
+        }
+        
+        // Last block (oldest) is always shown
+        if (totalBlocks > 1) {
+            ActivityBlockBuilder.ActivityBlock lastBlock = allActivityBlocks.get(0);
+            addActivityBlockView(lastBlock, 0, showSaveButtons);
+        }
+    }
+    
     // Add a view for an activity block calculated from silence groups
     private void addActivityBlockView(final ActivityBlockBuilder.ActivityBlock block, final int blockIndex, boolean showSaveButton) {
         final Activity activity = getActivity();
         if (activity == null) return;
         
+        // Format timestamps as hh:mm
+        long now = System.currentTimeMillis();
+        String startTime = formatTimeRange(block.startTimeMillis, now);
+        String endTime = formatTimeRange(block.endTimeMillis, now);
+        
+        // Skip blocks that would display as "now-now" (both start and end within 1 minute of now)
+        if ("now".equals(startTime) && "now".equals(endTime)) {
+            return;
+        }
+        
         LinearLayout blockLayout = new LinearLayout(activity);
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
         blockLayout.setPadding(10, 5, 10, 5);
         
+        // Make the entire row clickable
+        blockLayout.setClickable(true);
+        blockLayout.setFocusable(true);
+        blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
+        
         TextView textView = new TextView(activity);
-        int durationSeconds = (int)(block.durationMillis / 1000);
-        String durationStr = formatDuration(durationSeconds);
-        textView.setText(String.format("Activity: %s", durationStr));
+        // Display time range as "hh:mm-now" or "hh:mm-hh:mm" (left-aligned)
+        textView.setText(String.format("%s-%s", startTime, endTime));
         textView.setTextSize(14);
+        textView.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
             0,
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -549,7 +763,7 @@ public class SaidItFragment extends Fragment {
         
         if (showSaveButton) {
             Button saveButton = new Button(activity);
-            // Set button text based on selection state
+            // Set button text based on selection state (right-aligned)
             if (selectedFrom == null) {
                 saveButton.setText(R.string.save_from_here);
             } else {
@@ -557,7 +771,9 @@ public class SaidItFragment extends Fragment {
             }
             saveButton.setTextSize(12);
             saveButton.setPadding(20, 10, 20, 10);
-            saveButton.setOnClickListener(new View.OnClickListener() {
+            
+            // Make the entire row selectable
+            blockLayout.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     handleActivityBlockSelection(block, blockIndex);
@@ -568,6 +784,126 @@ public class SaidItFragment extends Fragment {
         }
         
         activityTimeline.addView(blockLayout);
+    }
+    
+    // Format time as hh:mm or "now"
+    private String formatTimeRange(long timeMillis, long nowMillis) {
+        long ONE_MINUTE_MS = 60000;
+        if (Math.abs(timeMillis - nowMillis) < ONE_MINUTE_MS) { // Within 1 minute
+            return "now";
+        }
+        
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTimeInMillis(timeMillis);
+        int hour = cal.get(java.util.Calendar.HOUR_OF_DAY);
+        int minute = cal.get(java.util.Calendar.MINUTE);
+        return String.format("%02d:%02d", hour, minute);
+    }
+    
+    // Add a view for a future activity block (for scheduling)
+    private void addFutureActivityBlockView(final ActivityBlockBuilder.ActivityBlock block, final int blockIndex, boolean showSaveButton) {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        LinearLayout blockLayout = new LinearLayout(activity);
+        blockLayout.setOrientation(LinearLayout.HORIZONTAL);
+        blockLayout.setPadding(10, 5, 10, 5);
+        
+        // Make the entire row clickable
+        blockLayout.setClickable(true);
+        blockLayout.setFocusable(true);
+        blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
+        
+        // Grayed out appearance for future blocks
+        blockLayout.setAlpha(0.5f);
+        
+        // Format timestamps as hh:mm
+        long now = System.currentTimeMillis();
+        String startTime = formatTimeRange(block.startTimeMillis, now);
+        String endTime = formatTimeRange(block.endTimeMillis, now);
+        
+        TextView textView = new TextView(activity);
+        // Display time range as "hh:mm-hh:mm" (left-aligned)
+        textView.setText(String.format("%s-%s (future)", startTime, endTime));
+        textView.setTextSize(14);
+        textView.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
+        textView.setLayoutParams(new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1.0f
+        ));
+        
+        blockLayout.addView(textView);
+        
+        if (showSaveButton) {
+            Button scheduleButton = new Button(activity);
+            scheduleButton.setText("Schedule Recording");
+            scheduleButton.setTextSize(12);
+            scheduleButton.setPadding(20, 10, 20, 10);
+            
+            // Handle scheduling action
+            blockLayout.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    handleScheduleRecording(block, blockIndex);
+                }
+            });
+            
+            blockLayout.addView(scheduleButton);
+        }
+        
+        activityTimeline.addView(blockLayout);
+    }
+    
+    // Handle scheduling a recording for a future time block
+    private void handleScheduleRecording(ActivityBlockBuilder.ActivityBlock block, int blockIndex) {
+        final Activity activity = getActivity();
+        if (activity == null || echo == null) return;
+        
+        // Prompt for filename
+        View dialogView = View.inflate(activity, R.layout.dialog_save_recording, null);
+        EditText fileName = dialogView.findViewById(R.id.recording_name);
+        
+        // Format the schedule time for display
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("MMM dd, yyyy HH:mm");
+        String startTimeStr = sdf.format(new java.util.Date(block.startTimeMillis));
+        String endTimeStr = sdf.format(new java.util.Date(block.endTimeMillis));
+        
+        new AlertDialog.Builder(activity)
+            .setView(dialogView)
+            .setTitle("Schedule Recording")
+            .setMessage(String.format("FROM: %s\nTO: %s\n\nRecording will start automatically and use partial file writing to handle rolling memory window.", 
+                startTimeStr, endTimeStr))
+            .setPositiveButton("Schedule", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    String filename = fileName.getText().toString();
+                    if(filename.length() > 0){
+                        // Save schedule to preferences
+                        android.content.SharedPreferences prefs = activity.getSharedPreferences(
+                            eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+                        prefs.edit()
+                            .putBoolean(eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_ENABLED_KEY, true)
+                            .putLong(eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_START_TIME_KEY, block.startTimeMillis)
+                            .putLong(eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_END_TIME_KEY, block.endTimeMillis)
+                            .putString(eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_FILENAME_KEY, filename)
+                            .apply();
+                        
+                        // Notify service to setup scheduled recording
+                        if (echo != null) {
+                            echo.setupScheduledRecording(block.startTimeMillis, block.endTimeMillis, filename);
+                        }
+                        
+                        Toast.makeText(activity, 
+                            "Recording scheduled for " + startTimeStr + ". It will be saved automatically using partial file writing.",
+                            Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
     
 
@@ -618,12 +954,12 @@ public class SaidItFragment extends Fragment {
         final Activity activity = getActivity();
         if (activity == null || selectedFrom == null || selectedTo == null || echo == null) return;
         
-        // Calculate time ranges based on activity block timestamps
+        // Use stored absolute timestamps for robustness across timeline changes
         long currentTime = System.currentTimeMillis();
         
-        // Get the start and end times of the selected blocks
-        long fromStartTime = selectedFrom.block.startTimeMillis;
-        long toEndTime = selectedTo.block.endTimeMillis;
+        // Get the start and end times from the stored selection
+        long fromStartTime = selectedFrom.startTimeMillis;
+        long toEndTime = selectedTo.endTimeMillis;
         
         // Convert to seconds ago (from current time)
         float fromSecondsTmp = (currentTime - fromStartTime) / 1000f;

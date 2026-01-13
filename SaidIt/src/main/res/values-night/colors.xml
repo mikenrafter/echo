@@ -1,33 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="gray_0">#ff000000</color>
-    <color name="gray_6">#ff666666</color>
-    <color name="gray_8">#ff888888</color>
-    <color name="gray_a">#ffaaaaaa</color>
-    <color name="gray_c">#ffcccccc</color>
-    <color name="gray_d">#ffdddddd</color>
-    <color name="gray_e">#ffeeeeee</color>
-    <color name="gray_f">#ffffffff</color>
+    <!-- Dark mode overrides for standard colors -->
+    <color name="gray_0">#FFFFFFFF</color>
+    <color name="gray_6">#FF999999</color>
+    <color name="gray_8">#FFB0B0B0</color>
+    <color name="gray_a">#FF999999</color>
+    <color name="gray_c">#FF555555</color>
+    <color name="gray_d">#FF333333</color>
+    <color name="gray_e">#FF222222</color>
+    <color name="gray_f">#FF000000</color>
 
     <color name="transparent">#00000000</color>
 
+    <color name="red">#ffff5555</color>
+    <color name="light_red">#ffff8888</color>
+    <color name="dark_red">#ffcc4444</color>
 
-    <color name="red">#ffff0000</color>
-    <color name="light_red">#ffff5555</color>
-    <color name="dark_red">#ffcc0000</color>
+    <color name="dark_gold">#ffcc9933</color>
+    <color name="gold">#ffddaa33</color>
+    <color name="light_gold">#ffffdd66</color>
 
-    <color name="dark_gold">#ff806600</color>
-    <color name="gold">#ffaa8800</color>
-    <color name="light_gold">#ffffcc00</color>
-
-    <color name="dark_green">#ff00aa44</color>
-    <color name="green">#ff46d869</color>
-    <color name="slight_green">#ff2aff80</color>
-    <color name="light_green">#ffd5ffe6</color>
+    <color name="dark_green">#ff55dd77</color>
+    <color name="green">#ff66ff99</color>
+    <color name="slight_green">#ff55ff99</color>
+    <color name="light_green">#ff334444</color>
 
     <color name="half_green">#8046d869</color>
     <color name="quarter_green">#4046d869</color>
-    
+
     <!-- Dark mode colors -->
     <color name="dark_background">#FF121212</color>
     <color name="dark_surface">#FF1E1E1E</color>
@@ -37,7 +37,7 @@
     <color name="dark_button_text">#FFFFFFFF</color>
     <color name="dark_green_button">#FF2E7D32</color>
     <color name="dark_gray_button">#FF3C3C3C</color>
-    
+
     <!-- Light mode colors (for reference) -->
     <color name="light_background">#FFFFFFFF</color>
     <color name="light_text_primary">#FF000000</color>

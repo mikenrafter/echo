@@ -44,6 +44,22 @@ public class SaidIt {
     static final String DEVICE_CHANNEL_MODE_KEY = "device_channel_mode"; // 0=mono, 1=stereo
     static final String TOTAL_SKIPPED_SECONDS_KEY = "total_skipped_seconds"; // Statistics: total seconds skipped
     
+    // Dark mode
+    static final String DARK_MODE_KEY = "dark_mode_enabled";
+    
+    // VAD time-window configuration (conditional enable/disable based on time)
+    static final String VAD_TIME_WINDOW_ENABLED_KEY = "vad_time_window_enabled";
+    static final String VAD_START_HOUR_KEY = "vad_start_hour"; // Hour to start VAD (0-23)
+    static final String VAD_START_MINUTE_KEY = "vad_start_minute"; // Minute to start VAD (0-59)
+    static final String VAD_END_HOUR_KEY = "vad_end_hour"; // Hour to end VAD (0-23)
+    static final String VAD_END_MINUTE_KEY = "vad_end_minute"; // Minute to end VAD (0-59)
+    
+    // Scheduled recording configuration
+    static final String SCHEDULED_RECORDING_ENABLED_KEY = "scheduled_recording_enabled";
+    static final String SCHEDULED_RECORDING_START_TIME_KEY = "scheduled_recording_start_time"; // Milliseconds since epoch
+    static final String SCHEDULED_RECORDING_END_TIME_KEY = "scheduled_recording_end_time"; // Milliseconds since epoch
+    static final String SCHEDULED_RECORDING_FILENAME_KEY = "scheduled_recording_filename";
+    
     // Auto-save configuration (records to Echo/AutoSave subfolder)
     static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";
     static final String AUTO_SAVE_DURATION_KEY = "auto_save_duration"; // in seconds
