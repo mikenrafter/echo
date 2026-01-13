@@ -110,6 +110,44 @@
                         android:layout_weight="1"/>
                 </LinearLayout>
 
+                <!-- Pagination controls -->
+                <LinearLayout
+                    android:id="@+id/timeline_pagination_controls"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="10dp"
+                    android:visibility="gone">
+                    
+                    <Button
+                        android:id="@+id/timeline_prev_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="◀ Older"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:layout_marginEnd="10dp"/>
+                    
+                    <TextView
+                        android:id="@+id/timeline_page_info"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:textSize="12sp"
+                        android:text="Page 1 of 1"/>
+                    
+                    <Button
+                        android:id="@+id/timeline_next_button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Newer ▶"
+                        android:textSize="12sp"
+                        android:padding="8dp"
+                        android:layout_marginStart="10dp"/>
+                </LinearLayout>
+
                 <ScrollView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

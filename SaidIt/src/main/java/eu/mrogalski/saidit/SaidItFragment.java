@@ -77,9 +77,18 @@ public class SaidItFragment extends Fragment {
     private int silenceSegmentCount = 3; // Default from settings
     private int blockSizeMinutes = 5; // Default block size for activity timeline
     
+    // Pagination state
+    private int currentPage = 0;
+    private static final int ITEMS_PER_PAGE = 10;
+    private java.util.List<ActivityBlockBuilder.ActivityBlock> allActivityBlocks = new java.util.ArrayList<>();
+    
     // Activity/Silence timeline display
     private LinearLayout activityTimelineContainer;
     private LinearLayout activityTimeline;
+    private LinearLayout timelinePaginationControls;
+    private Button timelinePrevButton;
+    private Button timelineNextButton;
+    private TextView timelinePageInfo;
     private TimelineSegmentSelection selectedFrom = null;
     private TimelineSegmentSelection selectedTo = null;
     
@@ -251,6 +260,36 @@ public class SaidItFragment extends Fragment {
         // Activity/Silence timeline views
         activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
         activityTimeline = (LinearLayout) rootView.findViewById(R.id.activity_timeline);
+        timelinePaginationControls = (LinearLayout) rootView.findViewById(R.id.timeline_pagination_controls);
+        timelinePrevButton = (Button) rootView.findViewById(R.id.timeline_prev_button);
+        timelineNextButton = (Button) rootView.findViewById(R.id.timeline_next_button);
+        timelinePageInfo = (TextView) rootView.findViewById(R.id.timeline_page_info);
+        
+        // Setup pagination button listeners
+        if (timelinePrevButton != null) {
+            timelinePrevButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (currentPage > 0) {
+                        currentPage--;
+                        renderPaginatedTimeline();
+                    }
+                }
+            });
+        }
+        
+        if (timelineNextButton != null) {
+            timelineNextButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    int totalPages = getTotalPages();
+                    if (currentPage < totalPages - 1) {
+                        currentPage++;
+                        renderPaginatedTimeline();
+                    }
+                }
+            });
+        }
         
         // Setup activity block size spinner
         android.widget.Spinner blockSizeSpinner = (android.widget.Spinner) rootView.findViewById(R.id.activity_block_size_spinner);
@@ -533,14 +572,23 @@ public class SaidItFragment extends Fragment {
                                         silenceGroups, totalMemorySeconds, blockSizeMillis
                                     );
                                 
+                                // Store all blocks for pagination
+                                allActivityBlocks = activityBlocks != null ? activityBlocks : new java.util.ArrayList<>();
+                                
+                                // Reset to first page when timeline is updated
+                                currentPage = 0;
+                                
                                 // Check if we have any content to display
-                                boolean hasContent = (activityBlocks != null && !activityBlocks.isEmpty()) ||
+                                boolean hasContent = !allActivityBlocks.isEmpty() ||
                                     (silenceGroups != null && !silenceGroups.isEmpty());
                                 
                                 if (!hasContent) {
                                     // Keep container visible but show it's empty if it was visible before
                                     if (activityTimelineContainer.getVisibility() == View.VISIBLE) {
                                         activityTimeline.removeAllViews();
+                                        if (timelinePaginationControls != null) {
+                                            timelinePaginationControls.setVisibility(View.GONE);
+                                        }
                                     }
                                     return;
                                 }
@@ -548,31 +596,94 @@ public class SaidItFragment extends Fragment {
                                 // Make timeline always visible once we have content
                                 activityTimelineContainer.setVisibility(View.VISIBLE);
                                 
-                                // Clear and rebuild only when there are changes
-                                activityTimeline.removeAllViews();
-                                
-                                // Always show save buttons for activity blocks
-                                boolean showSaveButtons = true;
-                                
-                                // Display activity blocks in reverse order (newest first)
-                                if (activityBlocks != null && !activityBlocks.isEmpty()) {
-                                    for (int i = activityBlocks.size() - 1; i >= 0; i--) {
-                                        ActivityBlockBuilder.ActivityBlock block = activityBlocks.get(i);
-                                        addActivityBlockView(block, i, showSaveButtons);
-                                    }
-                                }
-                                
-                                // Display silence groups in reverse order (newest first)
-                                if (silenceGroups != null && !silenceGroups.isEmpty()) {
-                                    for (int i = silenceGroups.size() - 1; i >= 0; i--) {
-                                        SaidItService.SilenceGroup group = silenceGroups.get(i);
-                                        addSilenceGroupView(group);
-                                    }
-                                }
+                                // Render paginated timeline
+                                renderPaginatedTimeline();
                             }
                         });
                     }
                 });
+            }
+        });
+    }
+    
+    // Calculate total number of pages
+    private int getTotalPages() {
+        if (allActivityBlocks.isEmpty()) return 1;
+        // Always show first (newest) and last (oldest), so paginate the middle items
+        int middleItems = Math.max(0, allActivityBlocks.size() - 2);
+        return (middleItems + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+    }
+    
+    // Render the paginated timeline
+    private void renderPaginatedTimeline() {
+        final Activity activity = getActivity();
+        if (activity == null || activityTimeline == null) return;
+        
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                // Clear and rebuild
+                activityTimeline.removeAllViews();
+                
+                if (allActivityBlocks.isEmpty()) {
+                    if (timelinePaginationControls != null) {
+                        timelinePaginationControls.setVisibility(View.GONE);
+                    }
+                    return;
+                }
+                
+                // Always show save buttons for activity blocks
+                boolean showSaveButtons = true;
+                
+                // Calculate pagination
+                int totalBlocks = allActivityBlocks.size();
+                int totalPages = getTotalPages();
+                
+                // Show/hide pagination controls
+                if (timelinePaginationControls != null) {
+                    if (totalPages > 1) {
+                        timelinePaginationControls.setVisibility(View.VISIBLE);
+                        
+                        // Update page info
+                        if (timelinePageInfo != null) {
+                            timelinePageInfo.setText(String.format("Page %d of %d", currentPage + 1, totalPages));
+                        }
+                        
+                        // Enable/disable buttons
+                        if (timelinePrevButton != null) {
+                            timelinePrevButton.setEnabled(currentPage > 0);
+                        }
+                        if (timelineNextButton != null) {
+                            timelineNextButton.setEnabled(currentPage < totalPages - 1);
+                        }
+                    } else {
+                        timelinePaginationControls.setVisibility(View.GONE);
+                    }
+                }
+                
+                // Display blocks in reverse order (newest first)
+                // First block (newest) is always shown
+                if (totalBlocks > 0) {
+                    ActivityBlockBuilder.ActivityBlock firstBlock = allActivityBlocks.get(totalBlocks - 1);
+                    addActivityBlockView(firstBlock, totalBlocks - 1, showSaveButtons);
+                }
+                
+                // Middle blocks (paginated)
+                if (totalBlocks > 2) {
+                    int startIdx = totalBlocks - 2 - (currentPage * ITEMS_PER_PAGE);
+                    int endIdx = Math.max(1, startIdx - ITEMS_PER_PAGE + 1);
+                    
+                    for (int i = startIdx; i >= endIdx && i >= 1; i--) {
+                        ActivityBlockBuilder.ActivityBlock block = allActivityBlocks.get(i);
+                        addActivityBlockView(block, i, showSaveButtons);
+                    }
+                }
+                
+                // Last block (oldest) is always shown
+                if (totalBlocks > 1) {
+                    ActivityBlockBuilder.ActivityBlock lastBlock = allActivityBlocks.get(0);
+                    addActivityBlockView(lastBlock, 0, showSaveButtons);
+                }
             }
         });
     }
