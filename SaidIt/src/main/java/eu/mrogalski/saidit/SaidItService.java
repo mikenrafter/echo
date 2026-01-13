@@ -1238,11 +1238,8 @@ public class SaidItService extends Service {
             File outputFile = new File(scheduledDir, sanitizedFilename + ".wav");
             
             // Setup partial file writer (similar to VAD)
-            MonoWavFileWriter partialWriter = new MonoWavFileWriter(
-                outputFile.getAbsolutePath(),
-                getSamplingRate(),
-                16 // bits per sample
-            );
+            simplesound.pcm.WavAudioFormat wavFormat = simplesound.pcm.WavAudioFormat.mono16Bit(getSamplingRate());
+            simplesound.pcm.WavFileWriter partialWriter = new simplesound.pcm.WavFileWriter(wavFormat, outputFile);
             
             // Calculate how much time until end
             long now = System.currentTimeMillis();
@@ -1268,19 +1265,21 @@ public class SaidItService extends Service {
      * Write audio to file incrementally (partial file writing like VAD).
      * This ensures that if the start time passes the rolling window, we still capture what's available.
      */
-    private void startPartialFileWriting(final MonoWavFileWriter writer, final long durationMillis, final File outputFile) {
+    private void startPartialFileWriting(final simplesound.pcm.WavFileWriter writer, final long durationMillis, final File outputFile) {
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
                 try {
                     // Write current memory buffer to start the file
-                    audioMemory.dumpToOutputStream(0, new java.util.function.Consumer<byte[]>() {
+                    audioMemory.read(0, new AudioMemory.Consumer() {
                         @Override
-                        public void accept(byte[] bytes) {
+                        public int consume(byte[] arr, int offset, int count) throws IOException {
                             try {
-                                writer.write(bytes);
+                                writer.write(arr, offset, count);
+                                return count;
                             } catch (Exception e) {
                                 Log.e(TAG, "Error writing scheduled recording chunk", e);
+                                return 0;
                             }
                         }
                     });
@@ -1307,14 +1306,16 @@ public class SaidItService extends Service {
                             try {
                                 // Get the latest 10 seconds of audio and append
                                 float skipSeconds = 10.0f;
-                                audioMemory.dumpToOutputStream((int)(skipSeconds * getSamplingRate() * 2), 
-                                    new java.util.function.Consumer<byte[]>() {
+                                audioMemory.read((int)(skipSeconds * getSamplingRate() * 2), 
+                                    new AudioMemory.Consumer() {
                                         @Override
-                                        public void accept(byte[] bytes) {
+                                        public int consume(byte[] arr, int offset, int count) throws IOException {
                                             try {
-                                                writer.write(bytes);
+                                                writer.write(arr, offset, count);
+                                                return count;
                                             } catch (Exception e) {
                                                 Log.e(TAG, "Error writing incremental chunk", e);
+                                                return 0;
                                             }
                                         }
                                     });

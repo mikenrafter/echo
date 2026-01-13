@@ -589,9 +589,6 @@ public class SaidItFragment extends Fragment {
                                     // Keep container visible but show it's empty if it was visible before
                                     if (activityTimelineContainer.getVisibility() == View.VISIBLE) {
                                         activityTimeline.removeAllViews();
-                                        if (timelinePaginationControls != null) {
-                                            timelinePaginationControls.setVisibility(View.GONE);
-                                        }
                                     }
                                     return;
                                 }
@@ -631,19 +628,11 @@ public class SaidItFragment extends Fragment {
                 // Determine if we're in future pages (negative) or past pages (positive)
                 boolean isFuturePage = currentPage < 0;
                 
-                if (!isFuturePage && allActivityBlocks.isEmpty()) {
-                    if (timelinePaginationControls != null) {
-                        timelinePaginationControls.setVisibility(View.GONE);
-                    }
-                    return;
-                }
-                
                 // Always show save buttons for activity blocks
                 boolean showSaveButtons = true;
                 
                 // Show/hide pagination controls
                 if (timelinePaginationControls != null) {
-                    timelinePaginationControls.setVisibility(View.VISIBLE);
                     
                     // Update page info
                     if (timelinePageInfo != null) {
@@ -659,7 +648,7 @@ public class SaidItFragment extends Fragment {
                     if (timelinePrevButton != null) {
                         // Prev (Older) button - can always go to past unless at max past pages
                         int totalPages = getTotalPages();
-                        timelinePrevButton.setEnabled(currentPage < totalPages - 1);
+                        timelinePrevButton.setEnabled(currentPage < totalPages);
                     }
                     if (timelineNextButton != null) {
                         // Next (Newer) button - can always go toward future (negative pages)
@@ -740,6 +729,16 @@ public class SaidItFragment extends Fragment {
         final Activity activity = getActivity();
         if (activity == null) return;
         
+        // Format timestamps as hh:mm
+        long now = System.currentTimeMillis();
+        String startTime = formatTimeRange(block.startTimeMillis, now);
+        String endTime = formatTimeRange(block.endTimeMillis, now);
+        
+        // Skip blocks that would display as "now-now" (both start and end within 1 minute of now)
+        if ("now".equals(startTime) && "now".equals(endTime)) {
+            return;
+        }
+        
         LinearLayout blockLayout = new LinearLayout(activity);
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
         blockLayout.setPadding(10, 5, 10, 5);
@@ -749,15 +748,11 @@ public class SaidItFragment extends Fragment {
         blockLayout.setFocusable(true);
         blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
         
-        // Format timestamps as hh:mm
-        long now = System.currentTimeMillis();
-        String startTime = formatTimeRange(block.startTimeMillis, now);
-        String endTime = formatTimeRange(block.endTimeMillis, now);
-        
         TextView textView = new TextView(activity);
-        // Display time range as "hh:mm-hh:mm" (left-aligned)
+        // Display time range as "hh:mm-now" or "hh:mm-hh:mm" (left-aligned)
         textView.setText(String.format("%s-%s", startTime, endTime));
         textView.setTextSize(14);
+        textView.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
             0,
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -831,6 +826,7 @@ public class SaidItFragment extends Fragment {
         // Display time range as "hh:mm-hh:mm" (left-aligned)
         textView.setText(String.format("%s-%s (future)", startTime, endTime));
         textView.setTextSize(14);
+        textView.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
             0,
             LinearLayout.LayoutParams.WRAP_CONTENT,

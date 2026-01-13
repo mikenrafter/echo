@@ -294,6 +294,9 @@ public class SettingsActivity extends Activity {
         // Initialize activity detection controls
         initActivityDetectionControls(root);
         
+        // Initialize VAD time window controls
+        initVadTimeWindowControls(root);
+        
         // Initialize device audio controls
         initDeviceAudioControls(root);
         
@@ -651,6 +654,97 @@ public class SettingsActivity extends Activity {
         preBufferInput.setOnFocusChangeListener(onBlurApply);
         postBufferInput.setOnFocusChangeListener(onBlurApply);
         autoDeleteInput.setOnFocusChangeListener(onBlurApply);
+    }
+
+    private void initVadTimeWindowControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox vadTimeWindowEnabled = (CheckBox) root.findViewById(R.id.vad_time_window_enabled);
+        final EditText vadStartHour = (EditText) root.findViewById(R.id.vad_start_hour);
+        final EditText vadStartMinute = (EditText) root.findViewById(R.id.vad_start_minute);
+        final EditText vadEndHour = (EditText) root.findViewById(R.id.vad_end_hour);
+        final EditText vadEndMinute = (EditText) root.findViewById(R.id.vad_end_minute);
+        
+        if (vadTimeWindowEnabled == null) {
+            return; // UI elements not found, skip initialization
+        }
+        
+        // Load existing preferences
+        vadTimeWindowEnabled.setChecked(prefs.getBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, false));
+        vadStartHour.setText(String.valueOf(prefs.getInt(SaidIt.VAD_START_HOUR_KEY, 22)));
+        vadStartMinute.setText(String.valueOf(prefs.getInt(SaidIt.VAD_START_MINUTE_KEY, 0)));
+        vadEndHour.setText(String.valueOf(prefs.getInt(SaidIt.VAD_END_HOUR_KEY, 6)));
+        vadEndMinute.setText(String.valueOf(prefs.getInt(SaidIt.VAD_END_MINUTE_KEY, 0)));
+        
+        final Runnable applyVadTimeWindow = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    int startHour = Integer.parseInt(vadStartHour.getText().toString());
+                    int startMinute = Integer.parseInt(vadStartMinute.getText().toString());
+                    int endHour = Integer.parseInt(vadEndHour.getText().toString());
+                    int endMinute = Integer.parseInt(vadEndMinute.getText().toString());
+                    
+                    // Validate ranges
+                    startHour = Math.max(0, Math.min(23, startHour));
+                    startMinute = Math.max(0, Math.min(59, startMinute));
+                    endHour = Math.max(0, Math.min(23, endHour));
+                    endMinute = Math.max(0, Math.min(59, endMinute));
+                    
+                    // Update UI with validated values
+                    vadStartHour.setText(String.valueOf(startHour));
+                    vadStartMinute.setText(String.valueOf(startMinute));
+                    vadEndHour.setText(String.valueOf(endHour));
+                    vadEndMinute.setText(String.valueOf(endMinute));
+                    
+                    // Save to preferences
+                    prefs.edit()
+                        .putBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, vadTimeWindowEnabled.isChecked())
+                        .putInt(SaidIt.VAD_START_HOUR_KEY, startHour)
+                        .putInt(SaidIt.VAD_START_MINUTE_KEY, startMinute)
+                        .putInt(SaidIt.VAD_END_HOUR_KEY, endHour)
+                        .putInt(SaidIt.VAD_END_MINUTE_KEY, endMinute)
+                        .apply();
+                    
+                    // Apply to service
+                    if (service != null) {
+                        service.setVadTimeWindowEnabled(vadTimeWindowEnabled.isChecked());
+                        service.setVadTimeWindow(startHour, startMinute, endHour, endMinute);
+                    }
+                    
+                    Toast.makeText(SettingsActivity.this,
+                        "VAD schedule: " + String.format("%02d:%02d-%02d:%02d", startHour, startMinute, endHour, endMinute),
+                        Toast.LENGTH_SHORT).show();
+                } catch (NumberFormatException e) {
+                    Toast.makeText(SettingsActivity.this,
+                        "Invalid time format. Please use 0-23 for hours and 0-59 for minutes.",
+                        Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+        
+        // Set up listeners
+        vadTimeWindowEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                applyVadTimeWindow.run();
+            }
+        });
+        
+        // Apply on focus loss for time inputs
+        View.OnFocusChangeListener onBlurApply = new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    applyVadTimeWindow.run();
+                }
+            }
+        };
+        
+        vadStartHour.setOnFocusChangeListener(onBlurApply);
+        vadStartMinute.setOnFocusChangeListener(onBlurApply);
+        vadEndHour.setOnFocusChangeListener(onBlurApply);
+        vadEndMinute.setOnFocusChangeListener(onBlurApply);
     }
 
     private void initDeviceAudioControls(View root) {
@@ -1112,9 +1206,9 @@ public class SettingsActivity extends Activity {
         setupAccordionHeader(root, R.id.header_silence, R.id.section_silence);
         setupAccordionHeader(root, R.id.header_device_audio, R.id.section_device_audio);
         setupAccordionHeader(root, R.id.header_dual_source, R.id.section_dual_source);
+        setupAccordionHeader(root, R.id.header_vad, R.id.section_vad);
         
         // Additional sections can be added as layout is refactored
-        // Activity Detection, Gradient Quality, Auto-Save, Export Effects, Dark Mode
         // Note: If headers don't exist yet in layout, this won't crash but won't do anything
     }
     
