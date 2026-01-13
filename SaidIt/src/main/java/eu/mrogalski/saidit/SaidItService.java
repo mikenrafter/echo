@@ -1079,6 +1079,71 @@ public class SaidItService extends Service {
             }
         });
     }
+    
+    /**
+     * Enable or disable VAD time window feature.
+     * When enabled, VAD only operates during specified time window.
+     */
+    public void setVadTimeWindowEnabled(final boolean enabled) {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        prefs.edit().putBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, enabled).apply();
+        Log.d(TAG, "VAD time window " + (enabled ? "enabled" : "disabled"));
+    }
+    
+    /**
+     * Set the time window during which VAD should be active.
+     * @param startHour Hour to start VAD (0-23)
+     * @param startMinute Minute to start VAD (0-59)
+     * @param endHour Hour to end VAD (0-23)
+     * @param endMinute Minute to end VAD (0-59)
+     */
+    public void setVadTimeWindow(final int startHour, final int startMinute, 
+                                  final int endHour, final int endMinute) {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        prefs.edit()
+            .putInt(SaidIt.VAD_START_HOUR_KEY, startHour)
+            .putInt(SaidIt.VAD_START_MINUTE_KEY, startMinute)
+            .putInt(SaidIt.VAD_END_HOUR_KEY, endHour)
+            .putInt(SaidIt.VAD_END_MINUTE_KEY, endMinute)
+            .apply();
+        Log.d(TAG, "VAD time window set: " + startHour + ":" + startMinute + " to " + endHour + ":" + endMinute);
+    }
+    
+    /**
+     * Check if VAD should be active based on time window settings.
+     * @return true if VAD should be active, false otherwise
+     */
+    private boolean isVadActiveInTimeWindow() {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        boolean vadTimeWindowEnabled = prefs.getBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, false);
+        
+        if (!vadTimeWindowEnabled) {
+            return true; // If time window not enabled, VAD always active
+        }
+        
+        int startHour = prefs.getInt(SaidIt.VAD_START_HOUR_KEY, 22);
+        int startMinute = prefs.getInt(SaidIt.VAD_START_MINUTE_KEY, 0);
+        int endHour = prefs.getInt(SaidIt.VAD_END_HOUR_KEY, 6);
+        int endMinute = prefs.getInt(SaidIt.VAD_END_MINUTE_KEY, 0);
+        
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        int currentHour = now.get(java.util.Calendar.HOUR_OF_DAY);
+        int currentMinute = now.get(java.util.Calendar.MINUTE);
+        
+        // Convert to minutes since midnight for easier comparison
+        int currentMinutes = currentHour * 60 + currentMinute;
+        int startMinutes = startHour * 60 + startMinute;
+        int endMinutes = endHour * 60 + endMinute;
+        
+        // Handle time window that crosses midnight
+        if (startMinutes > endMinutes) {
+            // Example: 22:00 to 06:00
+            return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+        } else {
+            // Example: 06:00 to 22:00
+            return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+        }
+    }
 
     public interface WavFileReceiver {
         public void fileReady(File file, float runtime);
@@ -1116,6 +1181,160 @@ public class SaidItService extends Service {
         }
 
         stopForeground(true);
+    }
+    
+    /**
+     * Setup a scheduled recording with partial file writing.
+     * Uses VAD-like incremental writing to handle rolling memory window.
+     * @param startTimeMillis When to start recording (milliseconds since epoch)
+     * @param endTimeMillis When to end recording (milliseconds since epoch)
+     * @param filename Output filename
+     */
+    public void setupScheduledRecording(final long startTimeMillis, final long endTimeMillis, final String filename) {
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    long now = System.currentTimeMillis();
+                    long delayUntilStart = startTimeMillis - now;
+                    
+                    if (delayUntilStart < 0) {
+                        Log.w(TAG, "Scheduled recording start time is in the past");
+                        return;
+                    }
+                    
+                    // Schedule start of recording with partial file writing
+                    audioHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            startScheduledRecordingWithPartialWriting(endTimeMillis, filename);
+                        }
+                    }, delayUntilStart);
+                    
+                    Log.d(TAG, "Scheduled recording setup: will start in " + (delayUntilStart/1000) + " seconds");
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Error setting up scheduled recording", e);
+                }
+            }
+        });
+    }
+    
+    /**
+     * Start a scheduled recording with partial file writing (like VAD).
+     * Writes audio incrementally so if start time passes the rolling window, it's not a problem.
+     */
+    private void startScheduledRecordingWithPartialWriting(final long endTimeMillis, final String filename) {
+        try {
+            // Create output directory
+            File echoDir = new File(android.os.Environment.getExternalStorageDirectory(), "Echo");
+            File scheduledDir = new File(echoDir, "Scheduled");
+            if (!scheduledDir.exists()) {
+                scheduledDir.mkdirs();
+            }
+            
+            // Create WAV file
+            String sanitizedFilename = filename.replaceAll("[^a-zA-Z0-9._-]", "_");
+            File outputFile = new File(scheduledDir, sanitizedFilename + ".wav");
+            
+            // Setup partial file writer (similar to VAD)
+            MonoWavFileWriter partialWriter = new MonoWavFileWriter(
+                outputFile.getAbsolutePath(),
+                getSamplingRate(),
+                16 // bits per sample
+            );
+            
+            // Calculate how much time until end
+            long now = System.currentTimeMillis();
+            long duration = endTimeMillis - now;
+            
+            if (duration <= 0) {
+                Log.w(TAG, "Scheduled recording end time is in the past");
+                return;
+            }
+            
+            // Start partial writing from memory with incremental updates
+            startPartialFileWriting(partialWriter, duration, outputFile);
+            
+            Log.d(TAG, "Started scheduled recording with partial file writing: " + outputFile.getAbsolutePath());
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting scheduled recording with partial file writing", e);
+            CrashHandler.writeCrashLog(this, "Error starting scheduled recording", e);
+        }
+    }
+    
+    /**
+     * Write audio to file incrementally (partial file writing like VAD).
+     * This ensures that if the start time passes the rolling window, we still capture what's available.
+     */
+    private void startPartialFileWriting(final MonoWavFileWriter writer, final long durationMillis, final File outputFile) {
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Write current memory buffer to start the file
+                    audioMemory.dumpToOutputStream(0, new java.util.function.Consumer<byte[]>() {
+                        @Override
+                        public void accept(byte[] bytes) {
+                            try {
+                                writer.write(bytes);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error writing scheduled recording chunk", e);
+                            }
+                        }
+                    });
+                    
+                    // Continue writing incrementally until end time
+                    final long endTime = System.currentTimeMillis() + durationMillis;
+                    final Runnable incrementalWriter = new Runnable() {
+                        @Override
+                        public void run() {
+                            long now = System.currentTimeMillis();
+                            if (now >= endTime) {
+                                // Finish recording
+                                try {
+                                    writer.close();
+                                    Log.d(TAG, "Scheduled recording completed: " + outputFile.getAbsolutePath());
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error closing scheduled recording", e);
+                                }
+                                return;
+                            }
+                            
+                            // Write latest audio chunks incrementally
+                            // This is partial file writing - we write what's currently in memory
+                            try {
+                                // Get the latest 10 seconds of audio and append
+                                float skipSeconds = 10.0f;
+                                audioMemory.dumpToOutputStream((int)(skipSeconds * getSamplingRate() * 2), 
+                                    new java.util.function.Consumer<byte[]>() {
+                                        @Override
+                                        public void accept(byte[] bytes) {
+                                            try {
+                                                writer.write(bytes);
+                                            } catch (Exception e) {
+                                                Log.e(TAG, "Error writing incremental chunk", e);
+                                            }
+                                        }
+                                    });
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error in incremental write", e);
+                            }
+                            
+                            // Schedule next incremental write in 10 seconds
+                            audioHandler.postDelayed(this, 10000);
+                        }
+                    };
+                    
+                    // Start incremental writing
+                    audioHandler.postDelayed(incrementalWriter, 10000);
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in partial file writing setup", e);
+                }
+            }
+        });
     }
 
     private void flushAudioRecord() {
