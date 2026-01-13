@@ -211,6 +211,13 @@ public class SettingsActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Apply dark theme if enabled
+        SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        boolean isDarkMode = prefs.getBoolean(SaidIt.DARK_MODE_KEY, false);
+        if (isDarkMode) {
+            setTheme(R.style.SaidItDark);
+        }
+        
         super.onCreate(savedInstanceState);
 
         // Initialize MediaProjectionManager for device audio capture
@@ -304,6 +311,9 @@ public class SettingsActivity extends Activity {
         
         // Initialize block size controls
         initBlockSizeControls(root);
+        
+        // Initialize dark mode controls
+        initDarkModeControls(root);
 
         //debugPrintCodecs();
 
@@ -1106,5 +1116,25 @@ public class SettingsActivity extends Activity {
         btn15.setOnClickListener(blockSizeListener);
         btn30.setOnClickListener(blockSizeListener);
         btn60.setOnClickListener(blockSizeListener);
+    }
+    
+    private void initDarkModeControls(View root) {
+        SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox darkModeEnabled = (CheckBox) root.findViewById(R.id.dark_mode_enabled);
+        if (darkModeEnabled != null) {
+            boolean isDarkMode = prefs.getBoolean(SaidIt.DARK_MODE_KEY, false);
+            darkModeEnabled.setChecked(isDarkMode);
+            
+            darkModeEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.DARK_MODE_KEY, isChecked).apply();
+                    Toast.makeText(SettingsActivity.this,
+                        "Dark mode " + (isChecked ? "enabled" : "disabled") + ". Please restart the app.",
+                        Toast.LENGTH_LONG).show();
+                }
+            });
+        }
     }
 }

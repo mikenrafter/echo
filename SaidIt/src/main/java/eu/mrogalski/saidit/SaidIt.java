@@ -44,6 +44,9 @@ public class SaidIt {
     static final String DEVICE_CHANNEL_MODE_KEY = "device_channel_mode"; // 0=mono, 1=stereo
     static final String TOTAL_SKIPPED_SECONDS_KEY = "total_skipped_seconds"; // Statistics: total seconds skipped
     
+    // Dark mode
+    static final String DARK_MODE_KEY = "dark_mode_enabled";
+    
     // Auto-save configuration (records to Echo/AutoSave subfolder)
     static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";
     static final String AUTO_SAVE_DURATION_KEY = "auto_save_duration"; // in seconds

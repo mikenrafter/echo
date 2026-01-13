@@ -98,13 +98,18 @@ public class SaidItFragment extends Fragment {
     private static final long TIMELINE_UPDATE_INTERVAL_MS = 60000; // Only update every 60 seconds (1 minute) at most
     
     // Track which activity blocks are selected for save range
+    // Store absolute timestamps instead of just block references for robustness
     private static class TimelineSegmentSelection {
         ActivityBlockBuilder.ActivityBlock block;
         int index;
+        long startTimeMillis;  // Store absolute start time
+        long endTimeMillis;    // Store absolute end time
         
         TimelineSegmentSelection(ActivityBlockBuilder.ActivityBlock block, int index) {
             this.block = block;
             this.index = index;
+            this.startTimeMillis = block.startTimeMillis;
+            this.endTimeMillis = block.endTimeMillis;
         }
     }
 
@@ -805,12 +810,12 @@ public class SaidItFragment extends Fragment {
         final Activity activity = getActivity();
         if (activity == null || selectedFrom == null || selectedTo == null || echo == null) return;
         
-        // Calculate time ranges based on activity block timestamps
+        // Use stored absolute timestamps for robustness across timeline changes
         long currentTime = System.currentTimeMillis();
         
-        // Get the start and end times of the selected blocks
-        long fromStartTime = selectedFrom.block.startTimeMillis;
-        long toEndTime = selectedTo.block.endTimeMillis;
+        // Get the start and end times from the stored selection
+        long fromStartTime = selectedFrom.startTimeMillis;
+        long toEndTime = selectedTo.endTimeMillis;
         
         // Convert to seconds ago (from current time)
         float fromSecondsTmp = (currentTime - fromStartTime) / 1000f;

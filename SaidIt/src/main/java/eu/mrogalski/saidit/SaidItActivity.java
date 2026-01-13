@@ -55,6 +55,13 @@ public class SaidItActivity extends Activity {
     };
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Apply dark theme if enabled
+        android.content.SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        boolean isDarkMode = prefs.getBoolean(SaidIt.DARK_MODE_KEY, false);
+        if (isDarkMode) {
+            setTheme(R.style.SaidItDark);
+        }
+        
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_background_recorder);
     }

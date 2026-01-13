@@ -195,6 +195,11 @@
     <string name="block_size_15min">15 minutes</string>
     <string name="block_size_30min">30 minutes</string>
     <string name="block_size_60min">60 minutes</string>
+    
+    <!-- Dark mode -->
+    <string name="dark_mode_label">Dark Mode</string>
+    <string name="dark_mode_enabled">Enable dark mode</string>
+    <string name="dark_mode_description">Use a dark theme throughout the app. Restart may be required.</string>
 
     <!-- Others -->
 
