@@ -307,15 +307,29 @@
 
         -->
 
-        <!-- Silence Skipping Settings -->
+        </LinearLayout>
+
+        <!-- Silence Skipping Section -->
         <TextView
+            android:id="@+id/header_silence"
             android:layout_marginTop="25dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/silence_skip_label"
+            android:text="▼ Silence Skipping"
             android:textSize="18sp"
-            android:textStyle="bold"/>
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_silence"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
 
         <CheckBox
             android:id="@+id/silence_skip_enabled"
@@ -414,16 +428,30 @@
                 android:layout_marginLeft="10dp"
                 android:minWidth="50dp"/>
         </LinearLayout>
+        
+        </LinearLayout>
 
-        <!-- Device Audio Recording Settings -->
+        <!-- Device Audio Section -->
         <TextView
+            android:id="@+id/header_device_audio"
             android:layout_marginTop="25dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/device_audio_label"
+            android:text="▼ Device Audio Recording"
             android:textSize="18sp"
-            android:textStyle="bold"/>
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_device_audio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
 
         <CheckBox
             android:id="@+id/device_audio_enabled"
@@ -442,16 +470,30 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/device_audio_description"/>
+        
+        </LinearLayout>
 
-        <!-- Dual-Source Recording Settings -->
+        <!-- Dual-Source Recording Section -->
         <TextView
+            android:id="@+id/header_dual_source"
             android:layout_marginTop="25dp"
             android:layout_marginBottom="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/dual_source_label"
+            android:text="▼ Dual-Source Recording (Advanced)"
             android:textSize="18sp"
-            android:textStyle="bold"/>
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_dual_source"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
         <CheckBox
             android:id="@+id/dual_source_enabled"

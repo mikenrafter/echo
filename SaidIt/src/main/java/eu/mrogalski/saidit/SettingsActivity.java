@@ -1109,10 +1109,13 @@ public class SettingsActivity extends Activity {
         setupAccordionHeader(root, R.id.header_memory, R.id.section_memory);
         setupAccordionHeader(root, R.id.header_quality, R.id.section_quality);
         setupAccordionHeader(root, R.id.header_storage, R.id.section_storage);
+        setupAccordionHeader(root, R.id.header_silence, R.id.section_silence);
+        setupAccordionHeader(root, R.id.header_device_audio, R.id.section_device_audio);
+        setupAccordionHeader(root, R.id.header_dual_source, R.id.section_dual_source);
         
+        // Additional sections can be added as layout is refactored
+        // Activity Detection, Gradient Quality, Auto-Save, Export Effects, Dark Mode
         // Note: If headers don't exist yet in layout, this won't crash but won't do anything
-        // The user requested keeping tracker bools and wrapping sections in ID-ed LinearLayouts
-        // which would require more extensive layout changes
     }
     
     /**
