@@ -882,26 +882,6 @@ public class SaidItFragment extends Fragment {
             1.0f
         ));
         
-        // Add thin border for first/last rows (themed)
-        if (isFirstRow || isLastRow) {
-            // Create a view with border
-            View borderView = new View(activity);
-            LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (int)(1 * density) // 1dp thin border
-            );
-            borderView.setLayoutParams(borderParams);
-            
-            // Theme the border - use gray_c for light mode, gray_d for dark mode
-            // The system will automatically pick the right color based on theme
-            borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
-            
-            // Add border at top for first row, bottom for last row
-            if (isFirstRow) {
-                activityTimeline.addView(borderView);
-            }
-        }
-        
         blockLayout.addView(textView);
         
         if (showSaveButton) {
@@ -926,23 +906,22 @@ public class SaidItFragment extends Fragment {
             saveText.setPadding(20, 10, 20, 10);
             saveText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
             
-            // Make the entire row selectable (only if no status, allow selection)
-            if (status.statusText == null || status.statusText.isEmpty()) {
-                blockLayout.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        handleActivityBlockSelection(block, blockIndex);
-                    }
-                });
-            }
+            // Make the entire row selectable regardless of status
+            blockLayout.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    handleActivityBlockSelection(block, blockIndex);
+                }
+            });
             
             blockLayout.addView(saveText);
         }
         
         activityTimeline.addView(blockLayout);
         
-        // Add bottom border for last row
-        if (isLastRow) {
+        // Add thin border for first/last rows (themed)
+        // Bottom border for first (newest) row, top border for last (oldest) row
+        if (isFirstRow) {
             View borderView = new View(activity);
             LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -951,6 +930,19 @@ public class SaidItFragment extends Fragment {
             borderView.setLayoutParams(borderParams);
             borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
             activityTimeline.addView(borderView);
+        }
+        
+        if (isLastRow) {
+            // Add top border for last row by inserting at the beginning
+            View borderView = new View(activity);
+            LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (int)(1 * density) // 1dp thin border
+            );
+            borderView.setLayoutParams(borderParams);
+            borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
+            // Insert at position 0 to place it before the last row
+            activityTimeline.addView(borderView, activityTimeline.getChildCount() - 1);
         }
     }
     
