@@ -318,6 +318,9 @@ public class SettingsActivity extends Activity {
         // Initialize accordion/collapsible sections
         initAccordionSections(root);
 
+    // Initialize debug memory controls
+    initDebugMemoryControls(root);
+
         //debugPrintCodecs();
 
         dialog.setDescriptionStringId(R.string.work_preparing_memory);
@@ -1207,9 +1210,23 @@ public class SettingsActivity extends Activity {
         setupAccordionHeader(root, R.id.header_device_audio, R.id.section_device_audio);
         setupAccordionHeader(root, R.id.header_dual_source, R.id.section_dual_source);
         setupAccordionHeader(root, R.id.header_vad, R.id.section_vad);
+        setupAccordionHeader(root, R.id.header_debug_memory, R.id.section_debug_memory);
+        setupAccordionHeader(root, R.id.header_about, R.id.section_about);
         
-        // Additional sections can be added as layout is refactored
-        // Note: If headers don't exist yet in layout, this won't crash but won't do anything
+        // Setup GitHub button in About section
+        android.widget.ImageButton githubButton = (android.widget.ImageButton) root.findViewById(R.id.rate_on_google_play);
+        if (githubButton != null) {
+            githubButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mafik/echo")));
+                    } catch (android.content.ActivityNotFoundException anfe) {
+                        // ignore
+                    }
+                }
+            });
+        }
     }
     
     /**
@@ -1254,5 +1271,18 @@ public class SettingsActivity extends Activity {
         }
         // Add appropriate arrow
         header.setText((isExpanded ? "▼ " : "▶ ") + text);
+    }
+
+    private void initDebugMemoryControls(View root) {
+        Button debugMemoryButton = (Button) root.findViewById(R.id.debug_memory_button);
+        if (debugMemoryButton != null) {
+            debugMemoryButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Intent intent = new Intent(SettingsActivity.this, DebugMemoryActivity.class);
+                    startActivity(intent);
+                }
+            });
+        }
     }
 }

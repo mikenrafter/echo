@@ -92,10 +92,24 @@
     <style name="GreenButton" parent="ButtonBase">
         <item name="android:background">@drawable/top_green_button</item>
         <item name="android:layout_margin">0dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
         <item name="android:shadowRadius">0.01</item>
         <item name="android:shadowDx">0</item>
         <item name="android:shadowDy">2</item>
         <item name="android:shadowColor">@color/dark_green</item>
+        <item name="android:textColor">@color/gray_f</item>
+    </style>
+
+    <style name="GrayButton" parent="ButtonBase">
+        <item name="android:background">@drawable/top_gray_button</item>
+        <item name="android:layout_margin">0dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:shadowRadius">0.01</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">2</item>
+        <item name="android:shadowColor">@color/gray_6</item>
         <item name="android:textColor">@color/gray_f</item>
     </style>
 
