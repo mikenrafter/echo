@@ -220,6 +220,11 @@
     <string name="export_completed_memory_efficient">Export completed using memory-efficient mode (audio effects bypassed)</string>
     <string name="export_failed_oom">Export failed: Out of memory. Try reducing memory size or export duration.</string>
     <string name="crash_logs_available">%d crash log(s) available in Echo/Crashes</string>
+    
+        <!-- Debug Memory -->
+        <string name="debug_memory_label">Debug Memory</string>
+        <string name="debug_memory_option">View memory usage details</string>
+        <string name="debug_memory_description">View heap memory, native memory, and other memory statistics</string>
     <!--
     <string name="compress_help"><b>WAV</b> - oznacza brak jakiejkolwiek kompresji - jest to format najlepiej oszczędzający baterię i cechujący się najlepszą jakością. Jego wadą jest duże zużycie pamięci.\n
 <b>3GP</b> - oferuje najmocniejszą kompresję ale jest bardzo energożerny i może usunąć z nagrania drobne detale\n

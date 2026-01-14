@@ -318,6 +318,9 @@ public class SettingsActivity extends Activity {
         // Initialize accordion/collapsible sections
         initAccordionSections(root);
 
+    // Initialize debug memory controls
+    initDebugMemoryControls(root);
+
         //debugPrintCodecs();
 
         dialog.setDescriptionStringId(R.string.work_preparing_memory);
@@ -1207,6 +1210,7 @@ public class SettingsActivity extends Activity {
         setupAccordionHeader(root, R.id.header_device_audio, R.id.section_device_audio);
         setupAccordionHeader(root, R.id.header_dual_source, R.id.section_dual_source);
         setupAccordionHeader(root, R.id.header_vad, R.id.section_vad);
+        setupAccordionHeader(root, R.id.header_debug_memory, R.id.section_debug_memory);
         
         // Additional sections can be added as layout is refactored
         // Note: If headers don't exist yet in layout, this won't crash but won't do anything
@@ -1254,5 +1258,18 @@ public class SettingsActivity extends Activity {
         }
         // Add appropriate arrow
         header.setText((isExpanded ? "▼ " : "▶ ") + text);
+    }
+
+    private void initDebugMemoryControls(View root) {
+        Button debugMemoryButton = (Button) root.findViewById(R.id.debug_memory_button);
+        if (debugMemoryButton != null) {
+            debugMemoryButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Intent intent = new Intent(SettingsActivity.this, DebugMemoryActivity.class);
+                    startActivity(intent);
+                }
+            });
+        }
     }
 }

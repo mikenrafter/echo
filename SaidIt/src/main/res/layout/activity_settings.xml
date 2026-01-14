@@ -1304,6 +1304,48 @@
             android:layout_height="wrap_content"
             android:text="@string/dark_mode_description"/>
 
+        <TextView
+            android:id="@+id/header_debug_memory"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="5dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▼ Debug Memory"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="10dp"/>
+        
+        <LinearLayout
+            android:id="@+id/section_debug_memory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/debug_memory_button"
+                android:layout_marginTop="10dp"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginBottom="10dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/debug_memory_option"/>
+
+            <TextView
+                style="@style/SmallText"
+                android:layout_marginLeft="20dp"
+                android:layout_marginRight="20dp"
+                android:layout_marginBottom="10dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/debug_memory_description"/>
+
+        </LinearLayout>
+
         <Button
             android:id="@+id/settings_return"
             android:layout_marginTop="20dp"
