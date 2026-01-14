@@ -82,6 +82,7 @@ public class SaidItFragment extends Fragment {
     private static final int ITEMS_PER_PAGE = 10;
     private java.util.List<ActivityBlockBuilder.ActivityBlock> allActivityBlocks = new java.util.ArrayList<>();
     private java.util.List<ActivityBlockBuilder.ActivityBlock> futureActivityBlocks = new java.util.ArrayList<>(); // For scheduled recordings
+    private java.util.List<SaidItService.SilenceGroup> currentSilenceGroups = new java.util.ArrayList<>(); // Store silence groups for display
     
     // Activity/Silence timeline display
     private LinearLayout activityTimelineContainer;
@@ -566,6 +567,10 @@ public class SaidItFragment extends Fragment {
                         activity.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
+                                // Store silence groups for later use
+                                currentSilenceGroups = silenceGroups != null ? 
+                                    new java.util.ArrayList<>(silenceGroups) : new java.util.ArrayList<>();
+                                
                                 // Use block size from settings
                                 long blockSizeMillis = blockSizeMinutes * 60 * 1000;
                                 
@@ -739,6 +744,9 @@ public class SaidItFragment extends Fragment {
             return;
         }
         
+        // Calculate silence duration within this block
+        long silenceDurationMs = calculateSilenceInBlock(block);
+        
         LinearLayout blockLayout = new LinearLayout(activity);
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
         blockLayout.setPadding(10, 5, 10, 5);
@@ -748,9 +756,55 @@ public class SaidItFragment extends Fragment {
         blockLayout.setFocusable(true);
         blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
         
+        // Add 4px right border for status indication
+        android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
+        border.setColor(activity.getResources().getColor(android.R.color.transparent));
+        border.setStroke(0, activity.getResources().getColor(android.R.color.transparent)); // Default transparent
+        // Right border will be set based on status (4dp = 4 * density)
+        float density = activity.getResources().getDisplayMetrics().density;
+        int borderWidth = (int)(4 * density);
+        // We'll use a drawable with padding to simulate right border
+        android.graphics.drawable.LayerDrawable layerDrawable = new android.graphics.drawable.LayerDrawable(
+            new android.graphics.drawable.Drawable[] {
+                border,
+                activity.getResources().getDrawable(android.R.drawable.list_selector_background)
+            }
+        );
+        // Add right border based on status later
+        blockLayout.setBackground(layerDrawable);
+        
+        // Determine if this is first or last row for borders
+        boolean isFirstRow = (blockIndex == allActivityBlocks.size() - 1) && blockIndex >= 0;
+        boolean isLastRow = (blockIndex == 0);
+        
         TextView textView = new TextView(activity);
         // Display time range as "hh:mm-now" or "hh:mm-hh:mm" (left-aligned)
-        textView.setText(String.format("%s-%s", startTime, endTime));
+        // Include silence duration if present
+        String displayText;
+        if (silenceDurationMs > 0) {
+            // Format silence as (-mm:ss) in gray
+            int silenceSeconds = (int)(silenceDurationMs / 1000);
+            int minutes = silenceSeconds / 60;
+            int seconds = silenceSeconds % 60;
+            String silenceStr = String.format("(-%d:%02d)", minutes, seconds);
+            
+            // Use spannable string to color the silence portion
+            android.text.SpannableString spannable = new android.text.SpannableString(
+                String.format("%s-%s %s", startTime, endTime, silenceStr)
+            );
+            int start = String.format("%s-%s ", startTime, endTime).length();
+            spannable.setSpan(
+                new android.text.style.ForegroundColorSpan(activity.getResources().getColor(R.color.gray_8)),
+                start,
+                spannable.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
+            textView.setText(spannable);
+        } else {
+            displayText = String.format("%s-%s", startTime, endTime);
+            textView.setText(displayText);
+        }
+        
         textView.setTextSize(14);
         textView.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
@@ -759,18 +813,40 @@ public class SaidItFragment extends Fragment {
             1.0f
         ));
         
+        // Add thin border for first/last rows (themed)
+        if (isFirstRow || isLastRow) {
+            // Create a view with border
+            View borderView = new View(activity);
+            LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (int)(1 * density) // 1dp thin border
+            );
+            borderView.setLayoutParams(borderParams);
+            
+            // Theme the border - use gray_c for light mode, gray_d for dark mode
+            // The system will automatically pick the right color based on theme
+            borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
+            
+            // Add border at top for first row, bottom for last row
+            if (isFirstRow) {
+                activityTimeline.addView(borderView);
+            }
+        }
+        
         blockLayout.addView(textView);
         
         if (showSaveButton) {
-            Button saveButton = new Button(activity);
-            // Set button text based on selection state (right-aligned)
+            TextView saveText = new TextView(activity);
+            // Set text based on selection state (right-aligned)
             if (selectedFrom == null) {
-                saveButton.setText(R.string.save_from_here);
+                saveText.setText(R.string.save_from_here);
             } else {
-                saveButton.setText(R.string.save_to_here);
+                saveText.setText(R.string.save_to_here);
             }
-            saveButton.setTextSize(12);
-            saveButton.setPadding(20, 10, 20, 10);
+            saveText.setTextSize(12);
+            saveText.setPadding(20, 10, 20, 10);
+            saveText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+            saveText.setTextColor(activity.getResources().getColor(R.color.gray_6));
             
             // Make the entire row selectable
             blockLayout.setOnClickListener(new View.OnClickListener() {
@@ -780,10 +856,43 @@ public class SaidItFragment extends Fragment {
                 }
             });
             
-            blockLayout.addView(saveButton);
+            blockLayout.addView(saveText);
         }
         
         activityTimeline.addView(blockLayout);
+        
+        // Add bottom border for last row
+        if (isLastRow) {
+            View borderView = new View(activity);
+            LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (int)(1 * density) // 1dp thin border
+            );
+            borderView.setLayoutParams(borderParams);
+            borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
+            activityTimeline.addView(borderView);
+        }
+    }
+    
+    // Calculate total silence duration within an activity block
+    private long calculateSilenceInBlock(ActivityBlockBuilder.ActivityBlock block) {
+        long totalSilence = 0;
+        if (currentSilenceGroups == null) return 0;
+        
+        for (SaidItService.SilenceGroup silenceGroup : currentSilenceGroups) {
+            long silenceStart = silenceGroup.endTimeMillis - silenceGroup.durationMillis;
+            long silenceEnd = silenceGroup.endTimeMillis;
+            
+            // Check if silence overlaps with block
+            if (silenceStart < block.endTimeMillis && silenceEnd > block.startTimeMillis) {
+                // Calculate overlap
+                long overlapStart = Math.max(silenceStart, block.startTimeMillis);
+                long overlapEnd = Math.min(silenceEnd, block.endTimeMillis);
+                totalSilence += (overlapEnd - overlapStart);
+            }
+        }
+        
+        return totalSilence;
     }
     
     // Format time as hh:mm or "now"
@@ -836,10 +945,12 @@ public class SaidItFragment extends Fragment {
         blockLayout.addView(textView);
         
         if (showSaveButton) {
-            Button scheduleButton = new Button(activity);
-            scheduleButton.setText("Schedule Recording");
-            scheduleButton.setTextSize(12);
-            scheduleButton.setPadding(20, 10, 20, 10);
+            TextView scheduleText = new TextView(activity);
+            scheduleText.setText("Schedule Recording");
+            scheduleText.setTextSize(12);
+            scheduleText.setPadding(20, 10, 20, 10);
+            scheduleText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+            scheduleText.setTextColor(activity.getResources().getColor(R.color.gray_6));
             
             // Handle scheduling action
             blockLayout.setOnClickListener(new View.OnClickListener() {
@@ -849,7 +960,7 @@ public class SaidItFragment extends Fragment {
                 }
             });
             
-            blockLayout.addView(scheduleButton);
+            blockLayout.addView(scheduleText);
         }
         
         activityTimeline.addView(blockLayout);
