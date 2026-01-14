@@ -861,8 +861,8 @@ public class SaidItFragment extends Fragment {
         blockLayout.setPadding(10, 5, 10, 5);
         
         // Make the entire row clickable (but not filler blocks)
-        blockLayout.setClickable(!block.isRecorded ? false : true);
-        blockLayout.setFocusable(!block.isRecorded ? false : true);
+        blockLayout.setClickable(block.isRecorded);
+        blockLayout.setFocusable(block.isRecorded);
         
         // Create a custom drawable with right border for status indication
         float density = activity.getResources().getDisplayMetrics().density;

@@ -43,7 +43,7 @@
     </plurals>
 
     <string name="clip_recording">CLIP RECORDING</string>
-    <string name="range_help">Choose a start (FROM) and end (TO) time in minutes ago. "Now" means end at the current moment.</string>
+    <string name="range_help">Select 2 time blocks to export them and everything between them.</string>
 
     <string name="default_price">$ 3.90</string>
 
