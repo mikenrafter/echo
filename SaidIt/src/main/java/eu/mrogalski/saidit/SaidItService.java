@@ -15,6 +15,10 @@ import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
+import android.media.AudioPlaybackCaptureConfiguration;
+import android.content.Context;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Environment;
@@ -47,7 +51,9 @@ public class SaidItService extends Service {
 
     File wavFile;
     AudioRecord audioRecord; // used only in the audio thread
-    AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode
+    AudioRecord deviceAudioRecord; // second AudioRecord for dual-source mode (uses MediaProjection)
+    MediaProjection mediaProjection; // For capturing device audio via AudioPlaybackCapture API
+    MediaProjectionManager mediaProjectionManager; // For creating MediaProjection in service context
     WavFileWriter wavFileWriter; // used only in the audio thread
     
     // Gradient quality: three separate memory rings for different quality tiers
@@ -195,6 +201,11 @@ public class SaidItService extends Service {
         Log.d(TAG, "Gradient quality: enabled=" + gradientQualityEnabled + 
             ", rates=" + gradientQualityHighRate + "/" + gradientQualityMidRate + "/" + gradientQualityLowRate);
         
+        // Initialize MediaProjectionManager for creating MediaProjection in service context
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+        }
+        
         // Load device audio recording preference
         recordDeviceAudio = preferences.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);
         Log.d(TAG, "Device audio recording: " + recordDeviceAudio);
@@ -276,16 +287,11 @@ public class SaidItService extends Service {
                 Log.d(TAG, "Audio: INITIALIZING AUDIO_RECORD");
 
                 if (dualSourceRecording) {
-                    // Dual-source mode: Initialize both MIC and REMOTE_SUBMIX
-                    Log.d(TAG, "Initializing DUAL-SOURCE recording (MIC + REMOTE_SUBMIX)");
+                    // Dual-source mode: Initialize both MIC and device audio (via AudioPlaybackCapture)
+                    Log.d(TAG, "Initializing DUAL-SOURCE recording (MIC + Device Audio via MediaProjection)");
                     
                     // Microphone
-                    audioRecord = new AudioRecord(
-                           MediaRecorder.AudioSource.MIC,
-                           SAMPLE_RATE,
-                           micChannelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
-                           AudioFormat.ENCODING_PCM_16BIT,
-                           AudioMemory.CHUNK_SIZE);
+                    audioRecord = createMicrophoneAudioRecord(micChannelMode);
                     
                     if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
                         Log.e(TAG, "Audio: MIC INITIALIZATION ERROR - releasing resources");
@@ -295,35 +301,78 @@ public class SaidItService extends Service {
                         return;
                     }
                     
-                    // Device audio
-                    deviceAudioRecord = new AudioRecord(
-                           MediaRecorder.AudioSource.REMOTE_SUBMIX,
-                           SAMPLE_RATE,
-                           deviceChannelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
-                           AudioFormat.ENCODING_PCM_16BIT,
-                           AudioMemory.CHUNK_SIZE);
-                    
-                    if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                        Log.e(TAG, "Audio: REMOTE_SUBMIX INITIALIZATION ERROR - falling back to single source");
-                        deviceAudioRecord.release();
-                        deviceAudioRecord = null;
-                        // Continue with just microphone
+                    // Device audio via AudioPlaybackCapture (requires MediaProjection)
+                    if (mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        try {
+                            AudioFormat audioFormat = createAudioFormat(deviceChannelMode);
+                            AudioPlaybackCaptureConfiguration config = createAudioPlaybackCaptureConfig();
+                            
+                            if (config != null) {
+                                deviceAudioRecord = new AudioRecord.Builder()
+                                    .setAudioFormat(audioFormat)
+                                    .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                                    .setAudioPlaybackCaptureConfig(config)
+                                    .build();
+                                
+                                if(deviceAudioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                                    Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to single source");
+                                    deviceAudioRecord.release();
+                                    deviceAudioRecord = null;
+                                    // Continue with just microphone
+                                } else {
+                                    Log.d(TAG, "AudioPlaybackCapture initialized successfully");
+                                }
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error initializing AudioPlaybackCapture: " + e.getMessage(), e);
+                            if (deviceAudioRecord != null) {
+                                deviceAudioRecord.release();
+                                deviceAudioRecord = null;
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "MediaProjection not available or Android version < 10 (API 29) - device audio capture not supported");
                     }
                     
                     Log.d(TAG, "Dual-source initialized: MIC=" + (audioRecord != null) + ", DEVICE=" + (deviceAudioRecord != null));
                 } else {
                     // Single-source mode
-                    int audioSource = recordDeviceAudio ? 
-                        MediaRecorder.AudioSource.REMOTE_SUBMIX : 
-                        MediaRecorder.AudioSource.MIC;
-                    Log.d(TAG, "Using audio source: " + (recordDeviceAudio ? "REMOTE_SUBMIX (device audio)" : "MIC"));
-
-                    audioRecord = new AudioRecord(
-                           audioSource,
-                           SAMPLE_RATE,
-                           AudioFormat.CHANNEL_IN_MONO,
-                           AudioFormat.ENCODING_PCM_16BIT,
-                           AudioMemory.CHUNK_SIZE);
+                    if (recordDeviceAudio && mediaProjection != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        // Device audio only via AudioPlaybackCapture
+                        Log.d(TAG, "Using audio source: Device Audio (via AudioPlaybackCapture)");
+                        
+                        try {
+                            AudioFormat audioFormat = createAudioFormat(0); // mono for single source
+                            AudioPlaybackCaptureConfiguration config = createAudioPlaybackCaptureConfig();
+                            
+                            if (config != null) {
+                                audioRecord = new AudioRecord.Builder()
+                                    .setAudioFormat(audioFormat)
+                                    .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                                    .setAudioPlaybackCaptureConfig(config)
+                                    .build();
+                                
+                                if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                                    Log.e(TAG, "Audio: AudioPlaybackCapture INITIALIZATION ERROR - falling back to microphone");
+                                    audioRecord.release();
+                                    audioRecord = null;
+                                    
+                                    // Fallback to microphone
+                                    audioRecord = createMicrophoneAudioRecord(0);
+                                }
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error initializing AudioPlaybackCapture: " + e.getMessage(), e);
+                            
+                            // Fallback to microphone
+                            audioRecord = createMicrophoneAudioRecord(0);
+                        }
+                    } else {
+                        // Microphone only
+                        Log.d(TAG, "Using audio source: MIC");
+                        
+                        audioRecord = createMicrophoneAudioRecord(0);
+                    }
 
                     if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
                         Log.e(TAG, "Audio: INITIALIZATION ERROR - releasing resources");
@@ -417,6 +466,11 @@ public class SaidItService extends Service {
                     deviceAudioRecord.release();
                     deviceAudioRecord = null;
                 }
+                // Note: MediaProjection lifecycle is managed by the activity that created it.
+                // The activity is responsible for stopping it when appropriate.
+                // If the activity doesn't clean up properly, MediaProjection may leak resources
+                // and continue consuming system resources. Consider implementing a timeout or
+                // callback mechanism to detect and handle abandoned MediaProjection instances.
                 audioHandler.removeCallbacks(audioReader);
                 
                 // Deallocate memory rings
@@ -616,6 +670,24 @@ public class SaidItService extends Service {
     }
 
     public void startRecording(final float prependedMemorySeconds) {
+        // Always re-acquire MediaProjection when starting a recording that needs it.
+        // This ensures we have a fresh token and avoids crashes from stale ones.
+        if (isMediaProjectionRequired()) {
+            Log.d(TAG, "MediaProjection is required. Invalidating old one and requesting new permission.");
+            this.mediaProjection = null; // Invalidate any existing projection
+
+            if (mediaProjectionRequestCallback != null) {
+                mediaProjectionRequestCallback.onRequestMediaProjection();
+                // Stop here. The recording will be re-initiated by the activity
+                // in onActivityResult after the user grants permission.
+                return;
+            } else {
+                Log.w(TAG, "MediaProjection required, but no callback is set to request permission.");
+                // Fallback or error toast could be here
+                return;
+            }
+        }
+
         switch(state) {
             case STATE_READY:
                 innerStartListening();
@@ -832,7 +904,8 @@ public class SaidItService extends Service {
     }
 
     /**
-     * Enable or disable device audio recording (REMOTE_SUBMIX).
+     * Enable or disable device audio recording (via AudioPlaybackCapture API).
+     * Requires MediaProjection to be set via setMediaProjection() before starting.
      * Requires restart of listening to take effect.
      * @param enabled If true, record device audio; if false, record microphone
      */
@@ -862,6 +935,93 @@ public class SaidItService extends Service {
         preferences.edit().putInt(DEVICE_CHANNEL_MODE_KEY, mode).apply();
         deviceChannelMode = mode;
         Log.d(TAG, "Device channel mode set to: " + (mode == 0 ? "mono" : "stereo") + " (restart listening to apply)");
+    }
+
+    /**
+     * Initialize MediaProjection from the result of a MediaProjection permission request.
+     * This method creates the MediaProjection in the service context, which is required
+     * for Android 14+ (API 34+) where MediaProjection must be created in a foreground
+     * service with FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION.
+     * 
+     * @param resultCode The result code from onActivityResult
+     * @param data The Intent data from onActivityResult containing the MediaProjection token
+     * @return true if MediaProjection was successfully initialized, false otherwise
+     */
+    public boolean initializeMediaProjection(int resultCode, Intent data) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaProjectionManager != null) {
+            // For Android 14+ (API 34+), MUST update foreground service type to include MEDIA_PROJECTION
+            // BEFORE calling getMediaProjection(). The Android system checks the foreground service type
+            // at the time MediaProjection is created and throws SecurityException if not properly declared.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE |
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+                try {
+                    Log.d(TAG, "Calling startForeground with MEDIA_PROJECTION type before getting projection.");
+                    startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceType);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to update foreground service type for MediaProjection", e);
+                    // We can still try to get the projection, but it will likely fail.
+                }
+            }
+
+            try {
+                // Now create the MediaProjection with the proper foreground service type already in place
+                MediaProjection projection = mediaProjectionManager.getMediaProjection(resultCode, data);
+                if (projection != null) {
+                    this.mediaProjection = projection;
+                    Log.d(TAG, "MediaProjection initialized in service context - device audio capture is now available");
+                    return true;
+                } else {
+                    Log.e(TAG, "Failed to initialize MediaProjection - projection is null");
+                    return false;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to initialize MediaProjection", e);
+                return false;
+            }
+        } else {
+            Log.e(TAG, "Cannot initialize MediaProjection - MediaProjectionManager not available");
+            return false;
+        }
+    }
+
+    /**
+     * Check if MediaProjection is required for the current audio configuration.
+     * Returns true if device audio or dual-source recording is enabled but MediaProjection is not yet initialized.
+     * 
+     * @return true if MediaProjection needs to be requested, false otherwise
+     */
+    public boolean isMediaProjectionRequired() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return false; // AudioPlaybackCapture requires Android 10+
+        }
+        
+        final SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        final boolean deviceAudioEnabled = prefs.getBoolean(RECORD_DEVICE_AUDIO_KEY, false);
+        final boolean dualSourceEnabled = prefs.getBoolean(DUAL_SOURCE_RECORDING_KEY, false);
+        
+        if ((deviceAudioEnabled || dualSourceEnabled) && mediaProjection == null) {
+            Log.d(TAG, "MediaProjection required but not initialized - device audio=" + deviceAudioEnabled + ", dual-source=" + dualSourceEnabled);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Set the MediaProjection instance for device audio capture.
+     * This must be called before starting recording if device audio capture is enabled.
+     * 
+     * @param projection The MediaProjection instance, or null to clear
+     * @deprecated Use initializeMediaProjection(int, Intent) instead to properly handle Android 14+ requirements
+     */
+    @Deprecated
+    public void setMediaProjection(MediaProjection projection) {
+        this.mediaProjection = projection;
+        if (projection != null) {
+            Log.d(TAG, "MediaProjection set - device audio capture is now available");
+        } else {
+            Log.d(TAG, "MediaProjection cleared - device audio capture is not available");
+        }
     }
 
     /**
@@ -919,6 +1079,71 @@ public class SaidItService extends Service {
             }
         });
     }
+    
+    /**
+     * Enable or disable VAD time window feature.
+     * When enabled, VAD only operates during specified time window.
+     */
+    public void setVadTimeWindowEnabled(final boolean enabled) {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        prefs.edit().putBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, enabled).apply();
+        Log.d(TAG, "VAD time window " + (enabled ? "enabled" : "disabled"));
+    }
+    
+    /**
+     * Set the time window during which VAD should be active.
+     * @param startHour Hour to start VAD (0-23)
+     * @param startMinute Minute to start VAD (0-59)
+     * @param endHour Hour to end VAD (0-23)
+     * @param endMinute Minute to end VAD (0-59)
+     */
+    public void setVadTimeWindow(final int startHour, final int startMinute, 
+                                  final int endHour, final int endMinute) {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        prefs.edit()
+            .putInt(SaidIt.VAD_START_HOUR_KEY, startHour)
+            .putInt(SaidIt.VAD_START_MINUTE_KEY, startMinute)
+            .putInt(SaidIt.VAD_END_HOUR_KEY, endHour)
+            .putInt(SaidIt.VAD_END_MINUTE_KEY, endMinute)
+            .apply();
+        Log.d(TAG, "VAD time window set: " + startHour + ":" + startMinute + " to " + endHour + ":" + endMinute);
+    }
+    
+    /**
+     * Check if VAD should be active based on time window settings.
+     * @return true if VAD should be active, false otherwise
+     */
+    private boolean isVadActiveInTimeWindow() {
+        SharedPreferences prefs = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        boolean vadTimeWindowEnabled = prefs.getBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, false);
+        
+        if (!vadTimeWindowEnabled) {
+            return true; // If time window not enabled, VAD always active
+        }
+        
+        int startHour = prefs.getInt(SaidIt.VAD_START_HOUR_KEY, 22);
+        int startMinute = prefs.getInt(SaidIt.VAD_START_MINUTE_KEY, 0);
+        int endHour = prefs.getInt(SaidIt.VAD_END_HOUR_KEY, 6);
+        int endMinute = prefs.getInt(SaidIt.VAD_END_MINUTE_KEY, 0);
+        
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        int currentHour = now.get(java.util.Calendar.HOUR_OF_DAY);
+        int currentMinute = now.get(java.util.Calendar.MINUTE);
+        
+        // Convert to minutes since midnight for easier comparison
+        int currentMinutes = currentHour * 60 + currentMinute;
+        int startMinutes = startHour * 60 + startMinute;
+        int endMinutes = endHour * 60 + endMinute;
+        
+        // Handle time window that crosses midnight
+        if (startMinutes > endMinutes) {
+            // Example: 22:00 to 06:00
+            return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+        } else {
+            // Example: 06:00 to 22:00
+            return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+        }
+    }
 
     public interface WavFileReceiver {
         public void fileReady(File file, float runtime);
@@ -957,6 +1182,161 @@ public class SaidItService extends Service {
 
         stopForeground(true);
     }
+    
+    /**
+     * Setup a scheduled recording with partial file writing.
+     * Uses VAD-like incremental writing to handle rolling memory window.
+     * @param startTimeMillis When to start recording (milliseconds since epoch)
+     * @param endTimeMillis When to end recording (milliseconds since epoch)
+     * @param filename Output filename
+     */
+    public void setupScheduledRecording(final long startTimeMillis, final long endTimeMillis, final String filename) {
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    long now = System.currentTimeMillis();
+                    long delayUntilStart = startTimeMillis - now;
+                    
+                    if (delayUntilStart < 0) {
+                        Log.w(TAG, "Scheduled recording start time is in the past");
+                        return;
+                    }
+                    
+                    // Schedule start of recording with partial file writing
+                    audioHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            startScheduledRecordingWithPartialWriting(endTimeMillis, filename);
+                        }
+                    }, delayUntilStart);
+                    
+                    Log.d(TAG, "Scheduled recording setup: will start in " + (delayUntilStart/1000) + " seconds");
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Error setting up scheduled recording", e);
+                }
+            }
+        });
+    }
+    
+    /**
+     * Start a scheduled recording with partial file writing (like VAD).
+     * Writes audio incrementally so if start time passes the rolling window, it's not a problem.
+     */
+    private void startScheduledRecordingWithPartialWriting(final long endTimeMillis, final String filename) {
+        try {
+            // Create output directory
+            File echoDir = new File(android.os.Environment.getExternalStorageDirectory(), "Echo");
+            File scheduledDir = new File(echoDir, "Scheduled");
+            if (!scheduledDir.exists()) {
+                scheduledDir.mkdirs();
+            }
+            
+            // Create WAV file
+            String sanitizedFilename = filename.replaceAll("[^a-zA-Z0-9._-]", "_");
+            File outputFile = new File(scheduledDir, sanitizedFilename + ".wav");
+            
+            // Setup partial file writer (similar to VAD)
+            simplesound.pcm.WavAudioFormat wavFormat = simplesound.pcm.WavAudioFormat.mono16Bit(getSamplingRate());
+            simplesound.pcm.WavFileWriter partialWriter = new simplesound.pcm.WavFileWriter(wavFormat, outputFile);
+            
+            // Calculate how much time until end
+            long now = System.currentTimeMillis();
+            long duration = endTimeMillis - now;
+            
+            if (duration <= 0) {
+                Log.w(TAG, "Scheduled recording end time is in the past");
+                return;
+            }
+            
+            // Start partial writing from memory with incremental updates
+            startPartialFileWriting(partialWriter, duration, outputFile);
+            
+            Log.d(TAG, "Started scheduled recording with partial file writing: " + outputFile.getAbsolutePath());
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting scheduled recording with partial file writing", e);
+            CrashHandler.writeCrashLog(this, "Error starting scheduled recording", e);
+        }
+    }
+    
+    /**
+     * Write audio to file incrementally (partial file writing like VAD).
+     * This ensures that if the start time passes the rolling window, we still capture what's available.
+     */
+    private void startPartialFileWriting(final simplesound.pcm.WavFileWriter writer, final long durationMillis, final File outputFile) {
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Write current memory buffer to start the file
+                    audioMemory.read(0, new AudioMemory.Consumer() {
+                        @Override
+                        public int consume(byte[] arr, int offset, int count) throws IOException {
+                            try {
+                                writer.write(arr, offset, count);
+                                return count;
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error writing scheduled recording chunk", e);
+                                return 0;
+                            }
+                        }
+                    });
+                    
+                    // Continue writing incrementally until end time
+                    final long endTime = System.currentTimeMillis() + durationMillis;
+                    final Runnable incrementalWriter = new Runnable() {
+                        @Override
+                        public void run() {
+                            long now = System.currentTimeMillis();
+                            if (now >= endTime) {
+                                // Finish recording
+                                try {
+                                    writer.close();
+                                    Log.d(TAG, "Scheduled recording completed: " + outputFile.getAbsolutePath());
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error closing scheduled recording", e);
+                                }
+                                return;
+                            }
+                            
+                            // Write latest audio chunks incrementally
+                            // This is partial file writing - we write what's currently in memory
+                            try {
+                                // Get the latest 10 seconds of audio and append
+                                float skipSeconds = 10.0f;
+                                audioMemory.read((int)(skipSeconds * getSamplingRate() * 2), 
+                                    new AudioMemory.Consumer() {
+                                        @Override
+                                        public int consume(byte[] arr, int offset, int count) throws IOException {
+                                            try {
+                                                writer.write(arr, offset, count);
+                                                return count;
+                                            } catch (Exception e) {
+                                                Log.e(TAG, "Error writing incremental chunk", e);
+                                                return 0;
+                                            }
+                                        }
+                                    });
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error in incremental write", e);
+                            }
+                            
+                            // Schedule next incremental write in 10 seconds
+                            audioHandler.postDelayed(this, 10000);
+                        }
+                    };
+                    
+                    // Start incremental writing
+                    audioHandler.postDelayed(incrementalWriter, 10000);
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in partial file writing setup", e);
+                }
+            }
+        });
+    }
 
     private void flushAudioRecord() {
         // Only allowed on the audio thread
@@ -969,6 +1349,7 @@ public class SaidItService extends Service {
      * Read from both mic and device audio sources and mix them into stereo output.
      * Output is always stereo (2 channels): Left channel = mic, Right channel = device audio
      * Each source can be mono or stereo independently.
+     * If one source has no data available, silence is used for that channel.
      * 
      * @param array Output buffer (stereo interleaved: L,R,L,R,...)
      * @param offset Offset in output buffer
@@ -989,7 +1370,7 @@ public class SaidItService extends Service {
         
         // Read from both sources
         int micRead = audioRecord.read(micBuffer, 0, micBytesNeeded, AudioRecord.READ_NON_BLOCKING);
-        int deviceRead = deviceAudioRecord.read(deviceBuffer, 0, deviceBytesNeeded, AudioRecord.READ_NON_BLOCKING);
+        int deviceRead = (deviceAudioRecord != null) ? deviceAudioRecord.read(deviceBuffer, 0, deviceBytesNeeded, AudioRecord.READ_NON_BLOCKING) : 0;
         
         // Handle read errors
         if (micRead < 0) {
@@ -1001,45 +1382,56 @@ public class SaidItService extends Service {
             deviceRead = 0;
         }
         
-        // Calculate how many complete stereo frames we can produce
-        int micFrames = (micChannelMode == 0) ? micRead / 2 : micRead / 4;
-        int deviceFrames = (deviceChannelMode == 0) ? deviceRead / 2 : deviceRead / 4;
-        int outputFrames = Math.min(micFrames, deviceFrames);
+        // Calculate how many frames we have from each source
+        int micFrames = (micRead > 0) ? ((micChannelMode == 0) ? micRead / 2 : micRead / 4) : 0;
+        int deviceFrames = (deviceRead > 0) ? ((deviceChannelMode == 0) ? deviceRead / 2 : deviceRead / 4) : 0;
+        
+        // Use the maximum of available frames (fill missing channel with silence)
+        int outputFrames = Math.max(micFrames, deviceFrames);
         outputFrames = Math.min(outputFrames, stereoFrames);
+        
+        // If neither source has data, return 0
+        if (outputFrames == 0) {
+            return 0;
+        }
         
         // Mix samples into output buffer
         int outIdx = offset;
         for (int frame = 0; frame < outputFrames; frame++) {
-            // Get mic sample (left channel)
-            short micSample;
-            if (micChannelMode == 0) {
-                // Mono: use the single channel
-                int idx = frame * 2;
-                int lo = micBuffer[idx] & 0xff;
-                int hi = micBuffer[idx + 1];
-                micSample = (short)((hi << 8) | lo);
-            } else {
-                // Stereo: use left channel (or could mix both)
-                int idx = frame * 4;
-                int lo = micBuffer[idx] & 0xff;
-                int hi = micBuffer[idx + 1];
-                micSample = (short)((hi << 8) | lo);
+            // Get mic sample (left channel) - use silence (0) if no data available
+            short micSample = 0;
+            if (frame < micFrames) {
+                if (micChannelMode == 0) {
+                    // Mono: use the single channel
+                    int idx = frame * 2;
+                    int lo = micBuffer[idx] & 0xff;
+                    int hi = micBuffer[idx + 1];
+                    micSample = (short)((hi << 8) | lo);
+                } else {
+                    // Stereo: use left channel (or could mix both)
+                    int idx = frame * 4;
+                    int lo = micBuffer[idx] & 0xff;
+                    int hi = micBuffer[idx + 1];
+                    micSample = (short)((hi << 8) | lo);
+                }
             }
             
-            // Get device sample (right channel)
-            short deviceSample;
-            if (deviceChannelMode == 0) {
-                // Mono: use the single channel
-                int idx = frame * 2;
-                int lo = deviceBuffer[idx] & 0xff;
-                int hi = deviceBuffer[idx + 1];
-                deviceSample = (short)((hi << 8) | lo);
-            } else {
-                // Stereo: use left channel (or could mix both)
-                int idx = frame * 4;
-                int lo = deviceBuffer[idx] & 0xff;
-                int hi = deviceBuffer[idx + 1];
-                deviceSample = (short)((hi << 8) | lo);
+            // Get device sample (right channel) - use silence (0) if no data available
+            short deviceSample = 0;
+            if (frame < deviceFrames) {
+                if (deviceChannelMode == 0) {
+                    // Mono: use the single channel
+                    int idx = frame * 2;
+                    int lo = deviceBuffer[idx] & 0xff;
+                    int hi = deviceBuffer[idx + 1];
+                    deviceSample = (short)((hi << 8) | lo);
+                } else {
+                    // Stereo: use left channel (or could mix both)
+                    int idx = frame * 4;
+                    int lo = deviceBuffer[idx] & 0xff;
+                    int hi = deviceBuffer[idx + 1];
+                    deviceSample = (short)((hi << 8) | lo);
+                }
             }
             
             // Write to output: Left = mic, Right = device
@@ -1058,10 +1450,10 @@ public class SaidItService extends Service {
 //            Log.d(TAG, "READING " + count + " B");
             
             int read;
-            if (dualSourceRecording && deviceAudioRecord != null) {
+            if (dualSourceRecording && deviceAudioRecord != null && audioRecord != null) {
                 // Dual-source mode: read from both sources and mix into stereo
                 read = readAndMixDualSource(array, offset, count);
-            } else {
+            } else if (audioRecord != null) {
                 // Single-source mode: read from primary audioRecord
                 read = audioRecord.read(array, offset, count, AudioRecord.READ_NON_BLOCKING);
                 if (read == AudioRecord.ERROR_BAD_VALUE) {
@@ -1076,6 +1468,10 @@ public class SaidItService extends Service {
                     Log.e(TAG, "AUDIO RECORD ERROR - UNKNOWN ERROR");
                     return 0;
                 }
+            } else {
+                // No audio record available - this shouldn't happen in normal operation
+                Log.w(TAG, "No audio record available in filler consumer");
+                return 0;
             }
             
             // Compute live volume (peak) for this buffer
@@ -1210,6 +1606,29 @@ public class SaidItService extends Service {
 
     public interface StateCallback {
         public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded, float skippedSeconds);
+    }
+
+    /**
+     * Callback interface for requesting MediaProjection permission.
+     * Implemented by the activity to handle showing the MediaProjection permission dialog.
+     */
+    public interface MediaProjectionRequestCallback {
+        /**
+         * Called when the service needs MediaProjection permission to be requested.
+         * The activity should start the MediaProjection intent and handle the result.
+         */
+        void onRequestMediaProjection();
+    }
+
+    // Callback for MediaProjection requests
+    private MediaProjectionRequestCallback mediaProjectionRequestCallback = null;
+
+    /**
+     * Set the callback for MediaProjection requests.
+     * This should be called by the activity that can handle the permission request.
+     */
+    public void setMediaProjectionRequestCallback(MediaProjectionRequestCallback callback) {
+        this.mediaProjectionRequestCallback = callback;
     }
 
     public void getState(final StateCallback stateCallback) {
@@ -1442,6 +1861,49 @@ public class SaidItService extends Service {
         }
     }
 
+    /**
+     * Create an AudioFormat for audio recording.
+     * @param channelMode 0 for mono, 1 for stereo
+     * @return AudioFormat configured with sample rate and channel mode
+     */
+    private AudioFormat createAudioFormat(int channelMode) {
+        return new AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .setSampleRate(SAMPLE_RATE)
+            .setChannelMask(channelMode == 0 ? 
+                AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO)
+            .build();
+    }
+
+    /**
+     * Create an AudioPlaybackCaptureConfiguration for device audio capture.
+     * @return AudioPlaybackCaptureConfiguration configured to capture media, game, and unknown audio
+     */
+    private AudioPlaybackCaptureConfiguration createAudioPlaybackCaptureConfig() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaProjection != null) {
+            return new AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+                .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
+                .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                .build();
+        }
+        return null;
+    }
+
+    /**
+     * Create a microphone AudioRecord with specified channel mode.
+     * @param channelMode 0 for mono, 1 for stereo
+     * @return AudioRecord configured for microphone capture
+     */
+    private AudioRecord createMicrophoneAudioRecord(int channelMode) {
+        return new AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            SAMPLE_RATE,
+            channelMode == 0 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            AudioMemory.CHUNK_SIZE);
+    }
+
     public float getBytesToSeconds() {
         return 1f / FILL_RATE;
     }
@@ -1466,7 +1928,14 @@ public class SaidItService extends Service {
             return START_STICKY;
         }
         
-        startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        // Determine foreground service type based on what we're recording
+        int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        if (mediaProjection != null && (recordDeviceAudio || dualSourceRecording) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Add media projection type ONLY when we have a valid, user-granted projection
+            foregroundServiceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+        }
+        
+        startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceType);
         return START_STICKY;
     }
 

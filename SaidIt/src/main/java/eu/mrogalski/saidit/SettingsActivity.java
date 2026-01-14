@@ -14,6 +14,9 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -41,6 +44,9 @@ public class SettingsActivity extends Activity {
     private final CustomMemoryApplyListener customMemoryApplyListener = new CustomMemoryApplyListener();
     private final StorageModeClickListener storageModeClickListener = new StorageModeClickListener();
 
+    private static final int MEDIA_PROJECTION_REQUEST_CODE = 1001;
+    private MediaProjectionManager mediaProjectionManager;
+    private boolean waitingForMediaProjection = false;
 
     final WorkingDialog dialog = new WorkingDialog();
 
@@ -137,8 +143,87 @@ public class SettingsActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        // Handle MediaProjection permission for both device audio and dual-source
+        if (requestCode == MEDIA_PROJECTION_REQUEST_CODE || requestCode == MEDIA_PROJECTION_REQUEST_CODE + 1) {
+            final boolean isDualSource = (requestCode == MEDIA_PROJECTION_REQUEST_CODE + 1);
+            final CheckBox deviceAudioEnabled = (CheckBox) findViewById(R.id.device_audio_enabled);
+            final CheckBox dualSourceEnabled = (CheckBox) findViewById(R.id.dual_source_enabled);
+            final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+            
+            if (resultCode == RESULT_OK && data != null) {
+                // User granted permission - pass to service to create MediaProjection
+                // This must be done in the service context since Android 14+ requires
+                // MediaProjection to be created in a foreground service with MEDIA_PROJECTION type
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && service != null) {
+                    boolean success = service.initializeMediaProjection(resultCode, data);
+                    
+                    if (success) {
+                        if (isDualSource) {
+                            prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, true).apply();
+                            service.setDualSourceRecording(true);
+                            if (dualSourceEnabled != null) {
+                                dualSourceEnabled.setChecked(true);
+                            }
+                            Toast.makeText(this,
+                                "Dual-source recording enabled (restart listening to apply)",
+                                Toast.LENGTH_LONG).show();
+                        } else {
+                            prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, true).apply();
+                            service.setDeviceAudioRecording(true);
+                            if (deviceAudioEnabled != null) {
+                                deviceAudioEnabled.setChecked(true);
+                            }
+                            Toast.makeText(this,
+                                "Device audio recording enabled (restart listening to apply)",
+                                Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        // Failed to initialize MediaProjection
+                        if (isDualSource && dualSourceEnabled != null) {
+                            dualSourceEnabled.setChecked(false);
+                        } else if (deviceAudioEnabled != null) {
+                            deviceAudioEnabled.setChecked(false);
+                        }
+                        Toast.makeText(this,
+                            "Failed to initialize screen recording. Please try again.",
+                            Toast.LENGTH_LONG).show();
+                    }
+                }
+            } else {
+                // User denied permission
+                if (isDualSource && dualSourceEnabled != null) {
+                    dualSourceEnabled.setChecked(false);
+                    prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, false).apply();
+                } else if (deviceAudioEnabled != null) {
+                    deviceAudioEnabled.setChecked(false);
+                    prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, false).apply();
+                }
+                Toast.makeText(this,
+                    "Screen recording permission denied. Device audio capture disabled.",
+                    Toast.LENGTH_LONG).show();
+            }
+            waitingForMediaProjection = false;
+        }
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Apply dark theme if enabled
+        SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        boolean isDarkMode = prefs.getBoolean(SaidIt.DARK_MODE_KEY, false);
+        if (isDarkMode) {
+            setTheme(R.style.SaidItDark);
+        }
+        
         super.onCreate(savedInstanceState);
+
+        // Initialize MediaProjectionManager for device audio capture
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            mediaProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+        }
 
         final AssetManager assets = getAssets();
         final Resources resources = getResources();
@@ -209,6 +294,9 @@ public class SettingsActivity extends Activity {
         // Initialize activity detection controls
         initActivityDetectionControls(root);
         
+        // Initialize VAD time window controls
+        initVadTimeWindowControls(root);
+        
         // Initialize device audio controls
         initDeviceAudioControls(root);
         
@@ -224,8 +312,11 @@ public class SettingsActivity extends Activity {
         // Initialize gradient quality controls
         initGradientQualityControls(root);
         
-        // Initialize block size controls
-        initBlockSizeControls(root);
+        // Initialize dark mode controls
+        initDarkModeControls(root);
+        
+        // Initialize accordion/collapsible sections
+        initAccordionSections(root);
 
         //debugPrintCodecs();
 
@@ -497,8 +588,8 @@ public class SettingsActivity extends Activity {
         thresholdSlider.setProgress(savedThreshold);
         thresholdValue.setText(String.valueOf(savedThreshold));
         activityEnabled.setChecked(prefs.getBoolean(SaidIt.ACTIVITY_DETECTION_ENABLED_KEY, false));
-        preBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, 300)));
-        postBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, 300)));
+        preBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_PRE_BUFFER_SECONDS_KEY, 20)));
+        postBufferInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_POST_BUFFER_SECONDS_KEY, 20)));
         autoDeleteInput.setText(String.valueOf(prefs.getInt(SaidIt.ACTIVITY_AUTO_DELETE_DAYS_KEY, 7)));
         highBitrate.setChecked(prefs.getBoolean(SaidIt.ACTIVITY_HIGH_BITRATE_KEY, false));
 
@@ -565,6 +656,97 @@ public class SettingsActivity extends Activity {
         autoDeleteInput.setOnFocusChangeListener(onBlurApply);
     }
 
+    private void initVadTimeWindowControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox vadTimeWindowEnabled = (CheckBox) root.findViewById(R.id.vad_time_window_enabled);
+        final EditText vadStartHour = (EditText) root.findViewById(R.id.vad_start_hour);
+        final EditText vadStartMinute = (EditText) root.findViewById(R.id.vad_start_minute);
+        final EditText vadEndHour = (EditText) root.findViewById(R.id.vad_end_hour);
+        final EditText vadEndMinute = (EditText) root.findViewById(R.id.vad_end_minute);
+        
+        if (vadTimeWindowEnabled == null) {
+            return; // UI elements not found, skip initialization
+        }
+        
+        // Load existing preferences
+        vadTimeWindowEnabled.setChecked(prefs.getBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, false));
+        vadStartHour.setText(String.valueOf(prefs.getInt(SaidIt.VAD_START_HOUR_KEY, 22)));
+        vadStartMinute.setText(String.valueOf(prefs.getInt(SaidIt.VAD_START_MINUTE_KEY, 0)));
+        vadEndHour.setText(String.valueOf(prefs.getInt(SaidIt.VAD_END_HOUR_KEY, 6)));
+        vadEndMinute.setText(String.valueOf(prefs.getInt(SaidIt.VAD_END_MINUTE_KEY, 0)));
+        
+        final Runnable applyVadTimeWindow = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    int startHour = Integer.parseInt(vadStartHour.getText().toString());
+                    int startMinute = Integer.parseInt(vadStartMinute.getText().toString());
+                    int endHour = Integer.parseInt(vadEndHour.getText().toString());
+                    int endMinute = Integer.parseInt(vadEndMinute.getText().toString());
+                    
+                    // Validate ranges
+                    startHour = Math.max(0, Math.min(23, startHour));
+                    startMinute = Math.max(0, Math.min(59, startMinute));
+                    endHour = Math.max(0, Math.min(23, endHour));
+                    endMinute = Math.max(0, Math.min(59, endMinute));
+                    
+                    // Update UI with validated values
+                    vadStartHour.setText(String.valueOf(startHour));
+                    vadStartMinute.setText(String.valueOf(startMinute));
+                    vadEndHour.setText(String.valueOf(endHour));
+                    vadEndMinute.setText(String.valueOf(endMinute));
+                    
+                    // Save to preferences
+                    prefs.edit()
+                        .putBoolean(SaidIt.VAD_TIME_WINDOW_ENABLED_KEY, vadTimeWindowEnabled.isChecked())
+                        .putInt(SaidIt.VAD_START_HOUR_KEY, startHour)
+                        .putInt(SaidIt.VAD_START_MINUTE_KEY, startMinute)
+                        .putInt(SaidIt.VAD_END_HOUR_KEY, endHour)
+                        .putInt(SaidIt.VAD_END_MINUTE_KEY, endMinute)
+                        .apply();
+                    
+                    // Apply to service
+                    if (service != null) {
+                        service.setVadTimeWindowEnabled(vadTimeWindowEnabled.isChecked());
+                        service.setVadTimeWindow(startHour, startMinute, endHour, endMinute);
+                    }
+                    
+                    Toast.makeText(SettingsActivity.this,
+                        "VAD schedule: " + String.format("%02d:%02d-%02d:%02d", startHour, startMinute, endHour, endMinute),
+                        Toast.LENGTH_SHORT).show();
+                } catch (NumberFormatException e) {
+                    Toast.makeText(SettingsActivity.this,
+                        "Invalid time format. Please use 0-23 for hours and 0-59 for minutes.",
+                        Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+        
+        // Set up listeners
+        vadTimeWindowEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                applyVadTimeWindow.run();
+            }
+        });
+        
+        // Apply on focus loss for time inputs
+        View.OnFocusChangeListener onBlurApply = new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    applyVadTimeWindow.run();
+                }
+            }
+        };
+        
+        vadStartHour.setOnFocusChangeListener(onBlurApply);
+        vadStartMinute.setOnFocusChangeListener(onBlurApply);
+        vadEndHour.setOnFocusChangeListener(onBlurApply);
+        vadEndMinute.setOnFocusChangeListener(onBlurApply);
+    }
+
     private void initDeviceAudioControls(View root) {
         final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
         
@@ -574,13 +756,33 @@ public class SettingsActivity extends Activity {
             deviceAudioEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                 @Override
                 public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                    prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, isChecked).apply();
-                    if (service != null) {
-                        service.setDeviceAudioRecording(isChecked);
+                    if (isChecked) {
+                        // Request MediaProjection permission for device audio capture
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaProjectionManager != null) {
+                            waitingForMediaProjection = true;
+                            Intent captureIntent = mediaProjectionManager.createScreenCaptureIntent();
+                            startActivityForResult(captureIntent, MEDIA_PROJECTION_REQUEST_CODE);
+                            Toast.makeText(SettingsActivity.this,
+                                "Please grant screen recording permission for device audio capture",
+                                Toast.LENGTH_LONG).show();
+                        } else {
+                            // Android version too old
+                            deviceAudioEnabled.setChecked(false);
+                            Toast.makeText(SettingsActivity.this,
+                                "Device audio capture requires Android 10 or higher",
+                                Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        // Disabling device audio
+                        prefs.edit().putBoolean(SaidIt.RECORD_DEVICE_AUDIO_KEY, false).apply();
+                        if (service != null) {
+                            service.setDeviceAudioRecording(false);
+                            service.setMediaProjection(null);
+                        }
+                        Toast.makeText(SettingsActivity.this,
+                            "Microphone recording enabled",
+                            Toast.LENGTH_SHORT).show();
                     }
-                    Toast.makeText(SettingsActivity.this,
-                        isChecked ? "Device audio recording enabled (restart listening)" : "Microphone recording enabled",
-                        Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -600,13 +802,30 @@ public class SettingsActivity extends Activity {
             dualSourceEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                 @Override
                 public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                    prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, isChecked).apply();
-                    if (service != null) {
-                        service.setDualSourceRecording(isChecked);
+                    if (isChecked) {
+                        // Dual-source needs MediaProjection for device audio
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mediaProjectionManager != null) {
+                            waitingForMediaProjection = true;
+                            Intent captureIntent = mediaProjectionManager.createScreenCaptureIntent();
+                            startActivityForResult(captureIntent, MEDIA_PROJECTION_REQUEST_CODE + 1); // Different code for dual-source
+                            Toast.makeText(SettingsActivity.this,
+                                "Please grant screen recording permission for device audio capture",
+                                Toast.LENGTH_LONG).show();
+                        } else {
+                            dualSourceEnabled.setChecked(false);
+                            Toast.makeText(SettingsActivity.this,
+                                "Dual-source recording requires Android 10 or higher",
+                                Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        prefs.edit().putBoolean(SaidIt.DUAL_SOURCE_RECORDING_KEY, false).apply();
+                        if (service != null) {
+                            service.setDualSourceRecording(false);
+                        }
+                        Toast.makeText(SettingsActivity.this,
+                            "Single-source recording",
+                            Toast.LENGTH_SHORT).show();
                     }
-                    Toast.makeText(SettingsActivity.this,
-                        isChecked ? "Dual-source recording enabled (restart listening)" : "Single-source recording",
-                        Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -944,52 +1163,96 @@ public class SettingsActivity extends Activity {
         btn48k.setOnClickListener(rateListener);
     }
     
-    private void initBlockSizeControls(View root) {
-        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+    private void initDarkModeControls(View root) {
+        SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
         
-        int blockSize = prefs.getInt(SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, 5);
+        final CheckBox darkModeEnabled = (CheckBox) root.findViewById(R.id.dark_mode_enabled);
+        if (darkModeEnabled != null) {
+            boolean isDarkMode = prefs.getBoolean(SaidIt.DARK_MODE_KEY, false);
+            darkModeEnabled.setChecked(isDarkMode);
+            
+            darkModeEnabled.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.DARK_MODE_KEY, isChecked).apply();
+                    Toast.makeText(SettingsActivity.this,
+                        "Dark mode " + (isChecked ? "enabled" : "disabled") + ". Please restart the app.",
+                        Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+    
+    /**
+     * Initialize accordion/collapsible sections for settings.
+     * Each section header becomes clickable and toggles its content visibility.
+     */
+    private void initAccordionSections(View root) {
+        // Define section header IDs and their corresponding content section IDs
+        // Note: We'll use existing TextViews with bold styling as headers
+        // and wrap groups of controls in LinearLayouts for toggling
         
-        Button btn5 = (Button) root.findViewById(R.id.block_size_5min);
-        Button btn10 = (Button) root.findViewById(R.id.block_size_10min);
-        Button btn15 = (Button) root.findViewById(R.id.block_size_15min);
-        Button btn30 = (Button) root.findViewById(R.id.block_size_30min);
-        Button btn60 = (Button) root.findViewById(R.id.block_size_60min);
+        // Since the layout doesn't have pre-defined section containers,
+        // we'll implement a simple accordion by finding TextViews with textStyle="bold"
+        // and textSize="18sp" which are section headers, then managing visibility
+        // of subsequent views until the next header.
         
-        // Highlight current selection
-        btn5.setBackgroundResource(blockSize == 5 ? R.drawable.green_button : R.drawable.gray_button);
-        btn10.setBackgroundResource(blockSize == 10 ? R.drawable.green_button : R.drawable.gray_button);
-        btn15.setBackgroundResource(blockSize == 15 ? R.drawable.green_button : R.drawable.gray_button);
-        btn30.setBackgroundResource(blockSize == 30 ? R.drawable.green_button : R.drawable.gray_button);
-        btn60.setBackgroundResource(blockSize == 60 ? R.drawable.green_button : R.drawable.gray_button);
+        // For now, let's implement toggling for major sections we can identify by ID
+        // This is a minimal implementation that uses existing headers
         
-        View.OnClickListener blockSizeListener = new View.OnClickListener() {
+        setupAccordionHeader(root, R.id.header_memory, R.id.section_memory);
+        setupAccordionHeader(root, R.id.header_quality, R.id.section_quality);
+        setupAccordionHeader(root, R.id.header_storage, R.id.section_storage);
+        setupAccordionHeader(root, R.id.header_silence, R.id.section_silence);
+        setupAccordionHeader(root, R.id.header_device_audio, R.id.section_device_audio);
+        setupAccordionHeader(root, R.id.header_dual_source, R.id.section_dual_source);
+        setupAccordionHeader(root, R.id.header_vad, R.id.section_vad);
+        
+        // Additional sections can be added as layout is refactored
+        // Note: If headers don't exist yet in layout, this won't crash but won't do anything
+    }
+    
+    /**
+     * Setup a single accordion header to toggle its section visibility.
+     * @param root The root view
+     * @param headerId ID of the header TextView
+     * @param sectionId ID of the section LinearLayout to toggle
+     */
+    private void setupAccordionHeader(View root, int headerId, int sectionId) {
+        final TextView header = (TextView) root.findViewById(headerId);
+        final View section = root.findViewById(sectionId);
+        
+        if (header == null || section == null) {
+            // IDs not found - skip this section
+            return;
+        }
+        
+        // Set initial state
+        final boolean[] isExpanded = {section.getVisibility() == View.VISIBLE};
+        updateHeaderIcon(header, isExpanded[0]);
+        
+        header.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int minutes = 5;
-                if (v.getId() == R.id.block_size_10min) minutes = 10;
-                else if (v.getId() == R.id.block_size_15min) minutes = 15;
-                else if (v.getId() == R.id.block_size_30min) minutes = 30;
-                else if (v.getId() == R.id.block_size_60min) minutes = 60;
-                
-                prefs.edit().putInt(SaidIt.TIMELINE_BLOCK_SIZE_MINUTES_KEY, minutes).apply();
-                
-                // Update button highlights
-                root.findViewById(R.id.block_size_5min).setBackgroundResource(minutes == 5 ? R.drawable.green_button : R.drawable.gray_button);
-                root.findViewById(R.id.block_size_10min).setBackgroundResource(minutes == 10 ? R.drawable.green_button : R.drawable.gray_button);
-                root.findViewById(R.id.block_size_15min).setBackgroundResource(minutes == 15 ? R.drawable.green_button : R.drawable.gray_button);
-                root.findViewById(R.id.block_size_30min).setBackgroundResource(minutes == 30 ? R.drawable.green_button : R.drawable.gray_button);
-                root.findViewById(R.id.block_size_60min).setBackgroundResource(minutes == 60 ? R.drawable.green_button : R.drawable.gray_button);
-                
-                Toast.makeText(SettingsActivity.this,
-                    "Activity block size: " + minutes + " minutes",
-                    Toast.LENGTH_SHORT).show();
+                isExpanded[0] = !isExpanded[0];
+                section.setVisibility(isExpanded[0] ? View.VISIBLE : View.GONE);
+                updateHeaderIcon(header, isExpanded[0]);
             }
-        };
-        
-        btn5.setOnClickListener(blockSizeListener);
-        btn10.setOnClickListener(blockSizeListener);
-        btn15.setOnClickListener(blockSizeListener);
-        btn30.setOnClickListener(blockSizeListener);
-        btn60.setOnClickListener(blockSizeListener);
+        });
+    }
+    
+    /**
+     * Update the header icon to show expanded/collapsed state.
+     * @param header The header TextView
+     * @param isExpanded Whether the section is expanded
+     */
+    private void updateHeaderIcon(TextView header, boolean isExpanded) {
+        String text = header.getText().toString();
+        // Remove existing arrow if present
+        if (text.startsWith("▼ ") || text.startsWith("▶ ")) {
+            text = text.substring(2);
+        }
+        // Add appropriate arrow
+        header.setText((isExpanded ? "▼ " : "▶ ") + text);
     }
 }

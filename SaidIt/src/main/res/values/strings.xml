@@ -105,8 +105,8 @@
 
     <string name="audio_memory_holds">Audio memory is limited at</string>
     <string name="audio_memory_change">You can change it by tweaking:</string>
-    <string name="option_a_used_ram">A) System memory in use</string>
-    <string name="option_b_audio_quality">B) Sound quality</string>
+    <string name="option_a_used_ram">System memory in use</string>
+    <string name="option_b_audio_quality">Sound quality</string>
     <string name="used_ram_description">Echo and other apps use system memory to keep their data. Large system memory consumption may slow other apps.</string>
     <string name="custom_memory_label">Or enter exact memory size:</string>
     <string name="custom_memory_hint">e.g., 100</string>
@@ -146,7 +146,7 @@
     <string name="auto_save_label">Auto-Save</string>
     <string name="auto_save_enabled">Enable auto-save</string>
     <string name="auto_save_description">Automatically save recordings at regular intervals.</string>
-    <string name="auto_save_duration_label">Auto-save interval (seconds):</string>
+    <string name="auto_save_duration_label">Auto-save interval:</string>
     <string name="auto_save_autodelete_label">Auto-delete auto-saves after (days):</string>
     <string name="settings_return">Return</string>
 
@@ -164,8 +164,8 @@
     <string name="activity_detection_enabled">Enable activity detection</string>
     <string name="activity_detection_description">Detect voice activity automatically and save buffered audio around it.</string>
     <string name="activity_detection_threshold_label">Sensitivity (higher = less sensitive):</string>
-    <string name="activity_prebuffer_label">Pre-activity buffer (seconds):</string>
-    <string name="activity_postbuffer_label">Post-activity buffer (seconds):</string>
+    <string name="activity_prebuffer_label">Pre-activity buffer:</string>
+    <string name="activity_postbuffer_label">Post-activity buffer:</string>
     <string name="activity_autodelete_label">Auto-delete after (days):</string>
     <string name="activity_high_bitrate_label">Use high-bitrate recording</string>
     <string name="activity_detection_updated">Activity detection settings applied</string>
@@ -195,6 +195,18 @@
     <string name="block_size_15min">15 minutes</string>
     <string name="block_size_30min">30 minutes</string>
     <string name="block_size_60min">60 minutes</string>
+    
+    <!-- VAD Time Window -->
+    <string name="vad_time_window_label">VAD Schedule</string>
+    <string name="vad_time_window_enabled">Enable time-based VAD schedule</string>
+    <string name="vad_time_window_description">Automatically enable/disable voice activity detection based on time of day</string>
+    <string name="vad_start_time_label">Start Time</string>
+    <string name="vad_end_time_label">End Time</string>
+    
+    <!-- Dark mode -->
+    <string name="dark_mode_label">Dark Mode</string>
+    <string name="dark_mode_enabled">Enable dark mode</string>
+    <string name="dark_mode_description">Use a dark theme throughout the app. Restart may be required.</string>
 
     <!-- Others -->
 

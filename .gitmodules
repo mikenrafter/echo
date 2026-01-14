@@ -1,8 +1,4 @@
-[submodule "reference/fix-auto-save-and-performance"]
-	path = reference/fix-auto-save-and-performance
-	url = https://github.com/ElliotBadinger/echo
-	branch = fix/auto-save-and-performance
-[submodule "reference/misc-fixes-and-new-features"]
-	path = reference/misc-fixes-and-new-features
-	url = https://github.com/mikenrafter/echo
-	branch = misc-fixes-and-new-features
+# [submodule "reference/screenrecorder"]
+# 	path = reference/screenrecorder
+# 	url = https://gitlab.com/vijai/screenrecorder
+# 	branch = master
