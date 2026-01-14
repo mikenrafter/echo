@@ -65,6 +65,9 @@ public class SaidIt {
     static final String AUTO_SAVE_DURATION_KEY = "auto_save_duration"; // in seconds
     static final String AUTO_SAVE_AUTO_DELETE_DAYS_KEY = "auto_save_auto_delete_days"; // Auto-delete files older than this many days
     
+    // Memory debug mode (adds timestamping and reduces max memory to 80%)
+    static final String DEBUG_MEMORY_ENABLED_KEY = "debug_memory_enabled";
+    
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
             "LTsUZgm0soga0mVVNGFj0qoATaoQCE/LamF7yrMCIFm9sEOB1guCEhzdr16sjysrVc2EPRisS83FoJ4K0R8" +

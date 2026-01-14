@@ -448,8 +448,39 @@ public class SaidItFragment extends Fragment {
                 }
             });
         }
+        
+        // Load scheduled recordings from preferences
+        loadScheduledRecordings();
+        
         serviceStateCallback.state(isListening, isRecording, 0, 0, 0, 0);
         return rootView;
+    }
+    
+    // Load scheduled recordings from preferences
+    private void loadScheduledRecordings() {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        android.content.SharedPreferences prefs = activity.getSharedPreferences(
+            eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+        
+        boolean scheduledEnabled = prefs.getBoolean(
+            eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_ENABLED_KEY, false);
+        
+        if (scheduledEnabled) {
+            long startTime = prefs.getLong(
+                eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_START_TIME_KEY, 0);
+            long endTime = prefs.getLong(
+                eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_END_TIME_KEY, 0);
+            
+            if (startTime > 0 && endTime > 0) {
+                // Only add if the scheduled time hasn't already passed
+                long now = System.currentTimeMillis();
+                if (endTime > now) {
+                    scheduledRanges.add(new TimeRange(startTime, endTime));
+                }
+            }
+        }
     }
 
     private SaidItService.StateCallback serviceStateCallback = new SaidItService.StateCallback() {
