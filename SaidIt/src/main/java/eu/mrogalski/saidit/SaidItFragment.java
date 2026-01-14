@@ -84,6 +84,35 @@ public class SaidItFragment extends Fragment {
     private java.util.List<ActivityBlockBuilder.ActivityBlock> futureActivityBlocks = new java.util.ArrayList<>(); // For scheduled recordings
     private java.util.List<SaidItService.SilenceGroup> currentSilenceGroups = new java.util.ArrayList<>(); // Store silence groups for display
     
+    // Track exports and schedules by timestamp ranges
+    private static class TimeRange {
+        long startMillis;
+        long endMillis;
+        
+        TimeRange(long startMillis, long endMillis) {
+            this.startMillis = startMillis;
+            this.endMillis = endMillis;
+        }
+        
+        // Check if this range overlaps with another range
+        boolean overlaps(long otherStart, long otherEnd) {
+            return startMillis < otherEnd && endMillis > otherStart;
+        }
+        
+        // Calculate overlap amount (0 if no overlap)
+        long overlapAmount(long otherStart, long otherEnd) {
+            if (!overlaps(otherStart, otherEnd)) return 0;
+            long overlapStart = Math.max(startMillis, otherStart);
+            long overlapEnd = Math.min(endMillis, otherEnd);
+            return overlapEnd - overlapStart;
+        }
+    }
+    
+    private java.util.List<TimeRange> exportedRanges = new java.util.ArrayList<>();
+    private java.util.List<TimeRange> scheduledRanges = new java.util.ArrayList<>();
+    private TimeRange currentlyExportingRange = null;
+    private java.util.List<TimeRange> vadOverlapRanges = new java.util.ArrayList<>();
+    
     // Activity/Silence timeline display
     private LinearLayout activityTimelineContainer;
     private LinearLayout activityTimeline;
@@ -747,6 +776,9 @@ public class SaidItFragment extends Fragment {
         // Calculate silence duration within this block
         long silenceDurationMs = calculateSilenceInBlock(block);
         
+        // Calculate status for this block
+        BlockStatus status = calculateBlockStatus(block);
+        
         LinearLayout blockLayout = new LinearLayout(activity);
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
         blockLayout.setPadding(10, 5, 10, 5);
@@ -754,24 +786,30 @@ public class SaidItFragment extends Fragment {
         // Make the entire row clickable
         blockLayout.setClickable(true);
         blockLayout.setFocusable(true);
-        blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
         
-        // Add 4px right border for status indication
-        android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
-        border.setColor(activity.getResources().getColor(android.R.color.transparent));
-        border.setStroke(0, activity.getResources().getColor(android.R.color.transparent)); // Default transparent
-        // Right border will be set based on status (4dp = 4 * density)
+        // Create a custom drawable with right border for status indication
         float density = activity.getResources().getDisplayMetrics().density;
         int borderWidth = (int)(4 * density);
-        // We'll use a drawable with padding to simulate right border
-        android.graphics.drawable.LayerDrawable layerDrawable = new android.graphics.drawable.LayerDrawable(
-            new android.graphics.drawable.Drawable[] {
-                border,
-                activity.getResources().getDrawable(android.R.drawable.list_selector_background)
-            }
-        );
-        // Add right border based on status later
-        blockLayout.setBackground(layerDrawable);
+        
+        // Create shape drawable for the row background
+        android.graphics.drawable.GradientDrawable bgDrawable = new android.graphics.drawable.GradientDrawable();
+        bgDrawable.setColor(android.graphics.Color.TRANSPARENT);
+        
+        // Set right border based on status
+        if (status.borderColor != android.R.color.transparent) {
+            int color = activity.getResources().getColor(status.borderColor);
+            bgDrawable.setStroke(borderWidth, color);
+            // For dotted borders (partial status), we'd need a different approach
+            // Android doesn't support dotted borders easily, so we'll use solid for now
+        }
+        
+        // Layer with selector background for touch feedback
+        android.graphics.drawable.StateListDrawable selector = new android.graphics.drawable.StateListDrawable();
+        selector.addState(new int[]{android.R.attr.state_pressed}, 
+            activity.getResources().getDrawable(android.R.drawable.list_selector_background));
+        selector.addState(new int[]{}, bgDrawable);
+        
+        blockLayout.setBackground(selector);
         
         // Determine if this is first or last row for borders
         boolean isFirstRow = (blockIndex == allActivityBlocks.size() - 1) && blockIndex >= 0;
@@ -837,24 +875,35 @@ public class SaidItFragment extends Fragment {
         
         if (showSaveButton) {
             TextView saveText = new TextView(activity);
-            // Set text based on selection state (right-aligned)
-            if (selectedFrom == null) {
-                saveText.setText(R.string.save_from_here);
+            
+            // Display status if available, otherwise show save from/to
+            if (status.statusText != null && !status.statusText.isEmpty()) {
+                saveText.setText(status.statusText);
+                // Use a distinct color for status text
+                saveText.setTextColor(activity.getResources().getColor(status.borderColor));
             } else {
-                saveText.setText(R.string.save_to_here);
+                // Set text based on selection state (right-aligned)
+                if (selectedFrom == null) {
+                    saveText.setText(R.string.save_from_here);
+                } else {
+                    saveText.setText(R.string.save_to_here);
+                }
+                saveText.setTextColor(activity.getResources().getColor(R.color.gray_6));
             }
+            
             saveText.setTextSize(12);
             saveText.setPadding(20, 10, 20, 10);
             saveText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
-            saveText.setTextColor(activity.getResources().getColor(R.color.gray_6));
             
-            // Make the entire row selectable
-            blockLayout.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    handleActivityBlockSelection(block, blockIndex);
-                }
-            });
+            // Make the entire row selectable (only if no status, allow selection)
+            if (status.statusText == null || status.statusText.isEmpty()) {
+                blockLayout.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        handleActivityBlockSelection(block, blockIndex);
+                    }
+                });
+            }
             
             blockLayout.addView(saveText);
         }
@@ -893,6 +942,79 @@ public class SaidItFragment extends Fragment {
         }
         
         return totalSilence;
+    }
+    
+    // Status for a timeline block
+    private static class BlockStatus {
+        String statusText; // "exported", "scheduled", "exporting", "detected", etc.
+        int borderColor;   // Color resource ID for right border
+        boolean isDotted;  // Whether border should be dotted (for partial)
+        
+        BlockStatus(String statusText, int borderColor, boolean isDotted) {
+            this.statusText = statusText;
+            this.borderColor = borderColor;
+            this.isDotted = isDotted;
+        }
+    }
+    
+    // Calculate the status of a block based on exports, schedules, VAD, etc.
+    // Priority: VAD > exporting > exported > scheduled
+    private BlockStatus calculateBlockStatus(ActivityBlockBuilder.ActivityBlock block) {
+        long blockStart = block.startTimeMillis;
+        long blockEnd = block.endTimeMillis;
+        long blockDuration = blockEnd - blockStart;
+        long now = System.currentTimeMillis();
+        
+        // Check if block has already concluded (never show scheduled for past blocks)
+        boolean blockConcluded = blockEnd < now;
+        
+        // Check VAD overlap (highest priority)
+        long vadOverlap = 0;
+        for (TimeRange vadRange : vadOverlapRanges) {
+            vadOverlap += vadRange.overlapAmount(blockStart, blockEnd);
+        }
+        if (vadOverlap > 0) {
+            boolean isPartial = vadOverlap < blockDuration;
+            String text = isPartial ? "partially detected" : "detected";
+            return new BlockStatus(text, R.color.gold, isPartial);
+        }
+        
+        // Check if currently exporting (second priority)
+        if (currentlyExportingRange != null) {
+            long exportingOverlap = currentlyExportingRange.overlapAmount(blockStart, blockEnd);
+            if (exportingOverlap > 0) {
+                boolean isPartial = exportingOverlap < blockDuration;
+                String text = isPartial ? "partially exporting" : "exporting";
+                return new BlockStatus(text, android.R.color.holo_blue_light, isPartial);
+            }
+        }
+        
+        // Check exported ranges (third priority)
+        long exportedOverlap = 0;
+        for (TimeRange exportedRange : exportedRanges) {
+            exportedOverlap += exportedRange.overlapAmount(blockStart, blockEnd);
+        }
+        if (exportedOverlap > 0) {
+            boolean isPartial = exportedOverlap < blockDuration;
+            String text = isPartial ? "partially exported" : "exported";
+            return new BlockStatus(text, android.R.color.holo_green_light, isPartial);
+        }
+        
+        // Check scheduled ranges (lowest priority, but never show if block concluded)
+        if (!blockConcluded) {
+            long scheduledOverlap = 0;
+            for (TimeRange scheduledRange : scheduledRanges) {
+                scheduledOverlap += scheduledRange.overlapAmount(blockStart, blockEnd);
+            }
+            if (scheduledOverlap > 0) {
+                boolean isPartial = scheduledOverlap < blockDuration;
+                String text = isPartial ? "partially scheduled" : "scheduled";
+                return new BlockStatus(text, android.R.color.holo_orange_light, isPartial);
+            }
+        }
+        
+        // No special status - transparent border
+        return new BlockStatus("", android.R.color.transparent, false);
     }
     
     // Format time as hh:mm or "now"
@@ -1000,10 +1122,16 @@ public class SaidItFragment extends Fragment {
                             .putString(eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_FILENAME_KEY, filename)
                             .apply();
                         
+                        // Track this scheduled range
+                        scheduledRanges.add(new TimeRange(block.startTimeMillis, block.endTimeMillis));
+                        
                         // Notify service to setup scheduled recording
                         if (echo != null) {
                             echo.setupScheduledRecording(block.startTimeMillis, block.endTimeMillis, filename);
                         }
+                        
+                        // Refresh timeline to show scheduled status
+                        updateTimelineDisplay();
                         
                         Toast.makeText(activity, 
                             "Recording scheduled for " + startTimeStr + ". It will be saved automatically using partial file writing.",
@@ -1086,6 +1214,10 @@ public class SaidItFragment extends Fragment {
         final float fromSecondsAgo = fromSecondsTmp;
         final float toSecondsAgo = toSecondsTmp;
         
+        // Store the time range for tracking
+        final long exportStartTime = fromStartTime;
+        final long exportEndTime = toEndTime;
+        
         // Prompt for filename
         View dialogView = View.inflate(activity, R.layout.dialog_save_recording, null);
         EditText fileName = dialogView.findViewById(R.id.recording_name);
@@ -1100,9 +1232,21 @@ public class SaidItFragment extends Fragment {
                 @Override
                 public void onClick(DialogInterface dialog, int which) {
                     if(fileName.getText().toString().length() > 0){
+                        // Mark as currently exporting
+                        currentlyExportingRange = new TimeRange(exportStartTime, exportEndTime);
+                        updateTimelineDisplay(); // Show exporting status
+                        
                         echo.dumpRecordingRange(fromSecondsAgo, toSecondsAgo, 
-                            new SaidItFragment.PromptFileReceiver(activity), 
+                            new SaidItFragment.ExportTrackingFileReceiver(activity, exportStartTime, exportEndTime), 
                             fileName.getText().toString());
+                    } else {
+                        Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
                     } else {
                         Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
                     }
@@ -1383,6 +1527,42 @@ public class SaidItFragment extends Fragment {
 
         @Override
         public void fileReady(final File file, float runtime) {
+            new RecordingDoneDialog()
+                    .setFile(file)
+                    .setRuntime(runtime)
+                    .show(activity.getFragmentManager(), "Recording Done");
+        }
+    }
+    
+    // File receiver that tracks exports for timeline status display
+    class ExportTrackingFileReceiver implements SaidItService.WavFileReceiver {
+        private Activity activity;
+        private long exportStartTime;
+        private long exportEndTime;
+        
+        public ExportTrackingFileReceiver(Activity activity, long exportStartTime, long exportEndTime) {
+            this.activity = activity;
+            this.exportStartTime = exportStartTime;
+            this.exportEndTime = exportEndTime;
+        }
+        
+        @Override
+        public void fileReady(final File file, float runtime) {
+            // Mark export as complete
+            currentlyExportingRange = null;
+            exportedRanges.add(new TimeRange(exportStartTime, exportEndTime));
+            
+            // Update timeline to show exported status
+            if (activity != null) {
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateTimelineDisplay();
+                    }
+                });
+            }
+            
+            // Show the recording done dialog
             new RecordingDoneDialog()
                     .setFile(file)
                     .setRuntime(runtime)
