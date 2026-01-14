@@ -1016,7 +1016,7 @@ public class SaidItFragment extends Fragment {
             if (exportingOverlap > 0) {
                 boolean isPartial = exportingOverlap < blockDuration;
                 String text = isPartial ? "partially exporting" : "exporting";
-                return new BlockStatus(text, android.R.color.holo_blue_light, isPartial);
+                return new BlockStatus(text, R.color.blue_light, isPartial);
             }
         }
         
@@ -1028,7 +1028,7 @@ public class SaidItFragment extends Fragment {
         if (exportedOverlap > 0) {
             boolean isPartial = exportedOverlap < blockDuration;
             String text = isPartial ? "partially exported" : "exported";
-            return new BlockStatus(text, android.R.color.holo_green_light, isPartial);
+            return new BlockStatus(text, R.color.green_light, isPartial);
         }
         
         // Check scheduled ranges (lowest priority, but never show if block concluded)
@@ -1040,7 +1040,7 @@ public class SaidItFragment extends Fragment {
             if (scheduledOverlap > 0) {
                 boolean isPartial = scheduledOverlap < blockDuration;
                 String text = isPartial ? "partially scheduled" : "scheduled";
-                return new BlockStatus(text, android.R.color.holo_orange_light, isPartial);
+                return new BlockStatus(text, R.color.orange_light, isPartial);
             }
         }
         
@@ -1270,14 +1270,6 @@ public class SaidItFragment extends Fragment {
                         echo.dumpRecordingRange(fromSecondsAgo, toSecondsAgo, 
                             new SaidItFragment.ExportTrackingFileReceiver(activity, exportStartTime, exportEndTime), 
                             fileName.getText().toString());
-                    } else {
-                        Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            })
-            .setNegativeButton("Cancel", null)
-            .show();
-    }
                     } else {
                         Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
                     }
