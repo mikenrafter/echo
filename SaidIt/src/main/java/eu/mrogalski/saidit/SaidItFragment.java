@@ -61,6 +61,8 @@ public class SaidItFragment extends Fragment {
     private TextView skippedGroupsInfo;
     private Button viewSkippedSilenceButton;
     private TextView crashLogsInfo;
+    private TextView vadCountInfo;
+    private TextView autoSaveCountInfo;
 
     ListenButtonClickListener listenButtonClickListener = new ListenButtonClickListener();
     RecordButtonClickListener recordButtonClickListener = new RecordButtonClickListener();
@@ -69,7 +71,6 @@ public class SaidItFragment extends Fragment {
     private boolean isRecording = false;
 
     private LinearLayout ready_section;
-    private TextView history_limit;
     private TextView history_size;
     // Removed history_size_title - no longer displaying "memory holds the most recent"
     private TextView volumeMeterLabel;
@@ -262,11 +263,9 @@ public class SaidItFragment extends Fragment {
             }
         });
 
-        history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
         // history_size_title removed
 
-        history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
 
         listenButton = (Button) rootView.findViewById(R.id.listen_button);
@@ -296,6 +295,8 @@ public class SaidItFragment extends Fragment {
         skippedGroupsInfo = (TextView) rootView.findViewById(R.id.skipped_groups_info);
         viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
         crashLogsInfo = (TextView) rootView.findViewById(R.id.crash_logs_info);
+        vadCountInfo = (TextView) rootView.findViewById(R.id.vad_count_info);
+        autoSaveCountInfo = (TextView) rootView.findViewById(R.id.autosave_count_info);
         
         // Activity/Silence timeline views
         activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
@@ -437,12 +438,32 @@ public class SaidItFragment extends Fragment {
             }
         });
 
-        rootView.findViewById(R.id.settings_button).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startActivity(new Intent(activity, SettingsActivity.class));
-            }
-        });
+        final View settingsIcon = rootView.findViewById(R.id.settings_icon);
+        if (settingsIcon != null) {
+            settingsIcon.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startActivity(new Intent(activity, SettingsActivity.class));
+                }
+            });
+
+            // Expand hit area by 15px to avoid accidental taps on the listen button
+            settingsIcon.post(new Runnable() {
+                @Override
+                public void run() {
+                    View parent = (View) settingsIcon.getParent();
+                    if (parent == null) return;
+                    android.graphics.Rect rect = new android.graphics.Rect();
+                    settingsIcon.getHitRect(rect);
+                    int extra = 15; // pixels
+                    rect.top -= extra;
+                    rect.bottom += extra;
+                    rect.left -= extra;
+                    rect.right += extra;
+                    parent.setTouchDelegate(new android.view.TouchDelegate(rect, settingsIcon));
+                }
+            });
+        }
 
         if (viewSkippedSilenceButton != null) {
             viewSkippedSilenceButton.setOnClickListener(new View.OnClickListener() {
@@ -523,12 +544,6 @@ public class SaidItFragment extends Fragment {
                 }
             }
 
-            TimeFormat.naturalLanguage(resources, totalMemory, timeFormatResult);
-
-            if (!history_limit.getText().equals(timeFormatResult.text)) {
-                history_limit.setText(timeFormatResult.text);
-            }
-
             // Format memorized time as hh:mm:ss
             int memorizedSeconds = Math.round(memorized);
             int hours = memorizedSeconds / 3600;
@@ -540,11 +555,15 @@ public class SaidItFragment extends Fragment {
                 history_size.setText(memorizedText);
             }
 
-            TimeFormat.naturalLanguage(resources, recorded, timeFormatResult);
+            int recordedSeconds = Math.max(0, Math.round(recorded));
+            int totalMemorySeconds = Math.max(0, Math.round(totalMemory));
+            String recordedHms = formatHms(recordedSeconds);
+            String totalHms = formatHms(totalMemorySeconds);
+            String combined = recordedHms + " / " + totalHms;
 
-            if (!rec_time.getText().equals(timeFormatResult.text)) {
-                rec_indicator.setText(resources.getQuantityText(R.plurals.recorded, timeFormatResult.count));
-                rec_time.setText(timeFormatResult.text);
+            if (!rec_time.getText().equals(combined)) {
+                rec_indicator.setText(resources.getQuantityText(R.plurals.recorded, recordedSeconds));
+                rec_time.setText(combined);
             }
 
             // No separate skipped seconds display here; combined with groups below
@@ -591,6 +610,18 @@ public class SaidItFragment extends Fragment {
                                 crashLogsInfo.setVisibility(View.VISIBLE);
                             } else {
                                 crashLogsInfo.setVisibility(View.GONE);
+                            }
+
+                            if (vadCountInfo != null) {
+                                int vadCount = echo.getVadRecordingCount();
+                                vadCountInfo.setText(resources.getString(R.string.vad_saved_count, vadCount));
+                                vadCountInfo.setVisibility(View.VISIBLE);
+                            }
+
+                            if (autoSaveCountInfo != null) {
+                                int autoSaveCount = echo.getAutoSaveCount();
+                                autoSaveCountInfo.setText(resources.getString(R.string.autosave_count, autoSaveCount));
+                                autoSaveCountInfo.setVisibility(View.VISIBLE);
                             }
                         }
                         
@@ -1104,6 +1135,14 @@ public class SaidItFragment extends Fragment {
         
         // No special status - transparent border
         return new BlockStatus("", android.R.color.transparent, false);
+    }
+
+    // Format seconds into HH:MM:SS
+    private String formatHms(int totalSeconds) {
+        int hours = totalSeconds / 3600;
+        int minutes = (totalSeconds % 3600) / 60;
+        int seconds = totalSeconds % 60;
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds);
     }
     
     // Format time as hh:mm or "now"

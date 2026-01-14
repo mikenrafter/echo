@@ -33,7 +33,7 @@ public class AudioMemory {
     
     // Memory debug mode tracking
     private boolean debugMemoryEnabled = false;
-    private static class ChunkDebugInfo {
+    public static class ChunkDebugInfo {
         long timestamp;      // When this chunk was filled
         boolean isSilent;    // Whether this chunk is silent
         int chunkIndex;      // Sequential index for tracking

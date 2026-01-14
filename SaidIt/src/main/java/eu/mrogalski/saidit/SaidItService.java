@@ -95,6 +95,7 @@ public class SaidItService extends Service {
     volatile int gradientQualityHighRate = 48000;
     volatile int gradientQualityMidRate = 16000;
     volatile int gradientQualityLowRate = 8000;
+    private volatile boolean debugMemoryEnabled = false;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -142,6 +143,21 @@ public class SaidItService extends Service {
         
         public boolean isOngoing() {
             return endTimeMillis == 0;
+        }
+    }
+
+    // Debug memory segment info (20s chunks with silence flag)
+    public static class MemoryDebugChunk {
+        public int chunkIndex;
+        public long startTimeMillis;
+        public long endTimeMillis;
+        public boolean isSilent;
+
+        MemoryDebugChunk(int chunkIndex, long startTimeMillis, long endTimeMillis, boolean isSilent) {
+            this.chunkIndex = chunkIndex;
+            this.startTimeMillis = startTimeMillis;
+            this.endTimeMillis = endTimeMillis;
+            this.isSilent = isSilent;
         }
     }
     
@@ -1830,6 +1846,75 @@ public class SaidItService extends Service {
             }
         });
     }
+
+    public boolean isDebugMemoryEnabled() {
+        return debugMemoryEnabled;
+    }
+
+    public void setDebugMemoryEnabled(final boolean enabled) {
+        debugMemoryEnabled = enabled;
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                audioMemory.setDebugMemoryEnabled(enabled);
+                audioMemoryHigh.setDebugMemoryEnabled(enabled);
+                audioMemoryMid.setDebugMemoryEnabled(enabled);
+                audioMemoryLow.setDebugMemoryEnabled(enabled);
+            }
+        });
+    }
+
+    public interface MemoryDebugCallback {
+        void onMemoryDebug(java.util.List<MemoryDebugChunk> chunks);
+    }
+
+    public void getMemoryDebugChunks(final MemoryDebugCallback cb) {
+        if (cb == null) return;
+
+        final Handler sourceHandler = new Handler();
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                final java.util.ArrayList<MemoryDebugChunk> snapshot = new java.util.ArrayList<>();
+                if (debugMemoryEnabled) {
+                    if (gradientQualityEnabled) {
+                        appendMemoryDebugChunks(snapshot, audioMemoryHigh.getChunkDebugInfo(), gradientQualityHighRate * 2);
+                        appendMemoryDebugChunks(snapshot, audioMemoryMid.getChunkDebugInfo(), gradientQualityMidRate * 2);
+                        appendMemoryDebugChunks(snapshot, audioMemoryLow.getChunkDebugInfo(), gradientQualityLowRate * 2);
+                    } else {
+                        appendMemoryDebugChunks(snapshot, audioMemory.getChunkDebugInfo(), FILL_RATE);
+                    }
+
+                    java.util.Collections.sort(snapshot, new java.util.Comparator<MemoryDebugChunk>() {
+                        @Override
+                        public int compare(MemoryDebugChunk a, MemoryDebugChunk b) {
+                            return Long.compare(a.startTimeMillis, b.startTimeMillis);
+                        }
+                    });
+                }
+
+                sourceHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.onMemoryDebug(snapshot);
+                    }
+                });
+            }
+        });
+    }
+
+    private void appendMemoryDebugChunks(java.util.List<MemoryDebugChunk> output,
+                                         java.util.List<AudioMemory.ChunkDebugInfo> chunks,
+                                         int bytesPerSecond) {
+        if (chunks == null || bytesPerSecond <= 0) return;
+
+        long durationMillis = (long)((AudioMemory.CHUNK_SIZE * 1000f) / bytesPerSecond);
+        for (AudioMemory.ChunkDebugInfo info : chunks) {
+            long endTime = info.timestamp;
+            long startTime = endTime - durationMillis;
+            output.add(new MemoryDebugChunk(info.chunkIndex, startTime, endTime, info.isSilent));
+        }
+    }
     
     // Update timeline tracking based on volume level
     private void updateTimeline(int volumeLevel, int silenceThreshold) {
@@ -2323,6 +2408,37 @@ public class SaidItService extends Service {
      */
     public int getCrashLogCount() {
         return CrashHandler.getCrashLogCount(this);
+    }
+
+    /**
+     * Count VAD recordings saved on disk.
+     */
+    public int getVadRecordingCount() {
+        int count = 0;
+        // External music directory
+        count += countFilesInDirectory(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/VAD"));
+        // Internal app storage fallback
+        count += countFilesInDirectory(new File(getFilesDir(), "Echo/VAD"));
+        return count;
+    }
+
+    /**
+     * Count auto-save recordings saved on disk.
+     */
+    public int getAutoSaveCount() {
+        int count = 0;
+        // External music directory
+        count += countFilesInDirectory(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/AutoSave"));
+        // Internal app storage fallback
+        count += countFilesInDirectory(new File(getFilesDir(), "Echo/AutoSave"));
+        return count;
+    }
+
+    private int countFilesInDirectory(File dir) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return 0;
+        File[] files = dir.listFiles();
+        if (files == null) return 0;
+        return files.length;
     }
 
 }

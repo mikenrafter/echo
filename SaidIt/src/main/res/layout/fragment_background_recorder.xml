@@ -10,13 +10,30 @@
         android:animateLayoutChanges="true"
         tools:context="eu.mrogalski.saidit.SaidItFragment">
 
-        <Button
-            android:id="@+id/listen_button"
-            style="@style/GreenButton"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:gravity="center"
-            android:text="@string/listening_enabled_disable" />
+            android:layout_height="wrap_content">
+
+            <Button
+                android:id="@+id/listen_button"
+                style="@style/GreenButton"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:gravity="center"
+                android:text="@string/listening_enabled_disable" />
+
+            <ImageButton
+                android:id="@+id/settings_icon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="12dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="@string/upper_memory_limit_settings_end"
+                android:padding="8dp"
+                android:src="@android:drawable/ic_menu_preferences" />
+
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -207,49 +224,6 @@
                 android:visibility="gone"/>
 
 
-            <View
-                android:layout_marginLeft="50dp"
-                android:layout_marginRight="50dp"
-                android:layout_marginTop="20dp"
-                android:layout_marginBottom="20dp"
-                android:layout_width="match_parent"
-                android:layerType="software"
-                android:layout_height="7dp"
-                android:background="@drawable/dashed_line" />
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/upper_memory_limit_start"/>
-
-            <TextView
-                android:id="@+id/history_limit"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                style="@style/EmphasizedText"
-                android:text="@string/sample_time"/>
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/upper_memory_limit_settings_start"/>
-
-            <Button
-                android:id="@+id/settings_button"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                style="@style/Button"
-                android:text="@string/upper_memory_limit_settings_end" />
-
         </LinearLayout>
 
         <LinearLayout
@@ -369,4 +343,26 @@
             />
 
     </LinearLayout>
+
+            <TextView
+                android:id="@+id/vad_count_info"
+                style="@style/SmallText"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:layout_marginBottom="5dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:visibility="gone"/>
+
+            <TextView
+                android:id="@+id/autosave_count_info"
+                style="@style/SmallText"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:layout_marginBottom="5dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:visibility="gone"/>
 </ScrollView>
