@@ -128,6 +128,10 @@ public class SaidItFragment extends Fragment {
     private long lastTimelineUpdate = 0;
     private static final long TIMELINE_UPDATE_INTERVAL_MS = 60000; // Only update every 60 seconds (1 minute) at most
     
+    // Track recorded range for padding blocks
+    private long recordedRangeStart = 0;  // Oldest recorded time
+    private long recordedRangeEnd = 0;    // Newest recorded time
+    
     // Track which activity blocks are selected for save range
     // Store absolute timestamps instead of just block references for robustness
     private static class TimelineSegmentSelection {
@@ -643,6 +647,15 @@ public class SaidItFragment extends Fragment {
                                 // Store all blocks for pagination
                                 allActivityBlocks = activityBlocks != null ? activityBlocks : new java.util.ArrayList<>();
                                 
+                                // Track recorded range from activity blocks
+                                if (!allActivityBlocks.isEmpty()) {
+                                    recordedRangeStart = allActivityBlocks.get(0).startTimeMillis;
+                                    recordedRangeEnd = allActivityBlocks.get(allActivityBlocks.size() - 1).endTimeMillis;
+                                } else {
+                                    recordedRangeStart = 0;
+                                    recordedRangeEnd = 0;
+                                }
+                                
                                 // Reset to first page when timeline is updated
                                 currentPage = 0;
                                 
@@ -758,17 +771,22 @@ public class SaidItFragment extends Fragment {
         }
     }
     
-    // Render past page (existing pagination logic)
+    // Render past page (existing pagination logic with padding)
     private void renderPastPage(boolean showSaveButtons) {
         // Calculate pagination
         int totalBlocks = allActivityBlocks.size();
         int totalPages = getTotalPages();
         
+        // Keep track of displayed items count to ensure we have 10 items per page
+        int displayedItems = 0;
+        java.util.List<ActivityBlockBuilder.ActivityBlock> pageBlocks = new java.util.ArrayList<>();
+        
         // Display blocks in reverse order (newest first)
         // First block (newest) is always shown
         if (totalBlocks > 0) {
             ActivityBlockBuilder.ActivityBlock firstBlock = allActivityBlocks.get(totalBlocks - 1);
-            addActivityBlockView(firstBlock, totalBlocks - 1, showSaveButtons);
+            pageBlocks.add(firstBlock);
+            displayedItems++;
         }
         
         // Middle blocks (paginated)
@@ -778,14 +796,42 @@ public class SaidItFragment extends Fragment {
             
             for (int i = startIdx; i >= endIdx && i >= 1; i--) {
                 ActivityBlockBuilder.ActivityBlock block = allActivityBlocks.get(i);
-                addActivityBlockView(block, i, showSaveButtons);
+                pageBlocks.add(block);
+                displayedItems++;
             }
         }
         
         // Last block (oldest) is always shown
         if (totalBlocks > 1) {
             ActivityBlockBuilder.ActivityBlock lastBlock = allActivityBlocks.get(0);
-            addActivityBlockView(lastBlock, 0, showSaveButtons);
+            pageBlocks.add(lastBlock);
+            displayedItems++;
+        }
+        
+        // Add padding blocks if needed to reach 10 items per page
+        long blockSizeMillis = blockSizeMinutes * 60 * 1000;
+        if (displayedItems < ITEMS_PER_PAGE && totalBlocks > 0) {
+            // Calculate the oldest block's start time to create padding before it
+            long oldestBlockStart = allActivityBlocks.get(0).startTimeMillis;
+            int paddingNeeded = ITEMS_PER_PAGE - displayedItems;
+            
+            for (int i = 0; i < paddingNeeded; i++) {
+                // Create padding blocks going backward in time
+                long paddingBlockEnd = oldestBlockStart - (i * blockSizeMillis);
+                long paddingBlockStart = paddingBlockEnd - blockSizeMillis;
+                
+                ActivityBlockBuilder.ActivityBlock paddingBlock = 
+                    new ActivityBlockBuilder.ActivityBlock(paddingBlockStart, paddingBlockEnd);
+                paddingBlock.isRecorded = false;  // Mark as padding/unrecorded
+                paddingBlock.blockIndex = -1;    // Special index for padding
+                
+                pageBlocks.add(paddingBlock);
+            }
+        }
+        
+        // Add all blocks to view in order (already in correct order from pageBlocks)
+        for (ActivityBlockBuilder.ActivityBlock block : pageBlocks) {
+            addActivityBlockView(block, -1, showSaveButtons);
         }
     }
     
@@ -814,9 +860,9 @@ public class SaidItFragment extends Fragment {
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
         blockLayout.setPadding(10, 5, 10, 5);
         
-        // Make the entire row clickable
-        blockLayout.setClickable(true);
-        blockLayout.setFocusable(true);
+        // Make the entire row clickable (but not filler blocks)
+        blockLayout.setClickable(!block.isRecorded ? false : true);
+        blockLayout.setFocusable(!block.isRecorded ? false : true);
         
         // Create a custom drawable with right border for status indication
         float density = activity.getResources().getDisplayMetrics().density;
@@ -824,14 +870,20 @@ public class SaidItFragment extends Fragment {
         
         // Create shape drawable for the row background
         android.graphics.drawable.GradientDrawable bgDrawable = new android.graphics.drawable.GradientDrawable();
-        bgDrawable.setColor(android.graphics.Color.TRANSPARENT);
         
-        // Set right border based on status
-        if (status.borderColor != android.R.color.transparent) {
-            int color = activity.getResources().getColor(status.borderColor);
-            bgDrawable.setStroke(borderWidth, color);
-            // For dotted borders (partial status), we'd need a different approach
-            // Android doesn't support dotted borders easily, so we'll use solid for now
+        // For filler blocks, use lighter styling with gray background
+        if (!block.isRecorded) {
+            bgDrawable.setColor(activity.getResources().getColor(R.color.gray_f));  // Light gray background
+        } else {
+            bgDrawable.setColor(android.graphics.Color.TRANSPARENT);
+            
+            // Set right border based on status (only for recorded blocks)
+            if (status.borderColor != android.R.color.transparent) {
+                int color = activity.getResources().getColor(status.borderColor);
+                bgDrawable.setStroke(borderWidth, color);
+                // For dotted borders (partial status), we'd need a different approach
+                // Android doesn't support dotted borders easily, so we'll use solid for now
+            }
         }
         
         // Layer with selector background for touch feedback
@@ -848,9 +900,17 @@ public class SaidItFragment extends Fragment {
         
         TextView textView = new TextView(activity);
         // Display time range as "hh:mm-now" or "hh:mm-hh:mm" (left-aligned)
-        // Include silence duration if present
+        // Include silence duration if present, or gray out if unrecorded
         String displayText;
-        if (silenceDurationMs > 0) {
+        int textColor = activity.getResources().getColor(android.R.color.white);  // Default white text
+        
+        if (!block.isRecorded) {
+            // Unrecorded (padding) block - gray text
+            displayText = String.format("%s-%s", startTime, endTime);
+            textColor = activity.getResources().getColor(R.color.gray_8);
+            textView.setText(displayText);
+            textView.setTextColor(textColor);
+        } else if (silenceDurationMs > 0) {
             // Format silence as (-mm:ss) in gray
             int silenceSeconds = (int)(silenceDurationMs / 1000);
             int minutes = silenceSeconds / 60;
@@ -884,7 +944,8 @@ public class SaidItFragment extends Fragment {
         
         blockLayout.addView(textView);
         
-        if (showSaveButton) {
+        // Only show save button for recorded blocks
+        if (showSaveButton && block.isRecorded) {
             TextView saveText = new TextView(activity);
             
             // Display status if available, otherwise show save from/to
@@ -981,8 +1042,13 @@ public class SaidItFragment extends Fragment {
     }
     
     // Calculate the status of a block based on exports, schedules, VAD, etc.
-    // Priority: VAD > exporting > exported > scheduled
+    // Priority: unrecorded > VAD > exporting > exported > scheduled
     private BlockStatus calculateBlockStatus(ActivityBlockBuilder.ActivityBlock block) {
+        // Check if block is unrecorded (padding) - highest priority
+        if (!block.isRecorded) {
+            return new BlockStatus("(not recorded)", R.color.gray_8, false);
+        }
+        
         long blockStart = block.startTimeMillis;
         long blockEnd = block.endTimeMillis;
         long blockDuration = blockEnd - blockStart;
