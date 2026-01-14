@@ -10,30 +10,33 @@
         android:animateLayoutChanges="true"
         tools:context="eu.mrogalski.saidit.SaidItFragment">
 
-        <FrameLayout
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="120dp"
+            android:orientation="horizontal">
 
             <Button
                 android:id="@+id/listen_button"
                 style="@style/GreenButton"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="60dp"
+                android:layout_weight="1"
                 android:gravity="center"
                 android:text="@string/listening_enabled_disable" />
 
-            <ImageButton
+            <Button
                 android:id="@+id/settings_icon"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginEnd="12dp"
-                android:background="@android:color/transparent"
+                style="@style/GrayButton"
+                android:layout_width="60dp"
+                android:layout_height="120dp"
                 android:contentDescription="@string/upper_memory_limit_settings_end"
-                android:padding="8dp"
-                android:src="@android:drawable/ic_menu_preferences" />
+                android:drawableTop="@android:drawable/ic_menu_preferences"
+                android:paddingTop="-8dp"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:paddingBottom="8dp" />
 
-        </FrameLayout>
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -283,54 +286,7 @@
 
         </LinearLayout>
 
-        <View
-            android:layout_marginLeft="50dp"
-            android:layout_marginRight="50dp"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="20dp"
-            android:layout_width="match_parent"
-            android:layerType="software"
-            android:layout_height="7dp"
-            android:background="@drawable/dashed_line" />
 
-        <TextView
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="5dp"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/listening_description"/>
-
-        <TextView
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="5dp"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/read_more_at"/>
-
-        <ImageButton
-            android:id="@+id/rate_on_google_play"
-            android:background="@drawable/gray_button"
-            android:layout_marginTop="15dp"
-            android:layout_marginBottom="15dp"
-            android:layout_gravity="center"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:src="@drawable/github_logo"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp" />
-
-        <TextView
-            android:layout_marginTop="5dp"
-            android:layout_marginBottom="5dp"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/rate_invite"/>
 
         <ImageView
             android:id="@+id/heart"
@@ -341,8 +297,6 @@
             android:layout_gravity="center"
             android:src="@drawable/ic_love"
             />
-
-    </LinearLayout>
 
             <TextView
                 android:id="@+id/vad_count_info"
@@ -365,4 +319,6 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:visibility="gone"/>
+
+    </LinearLayout>
 </ScrollView>

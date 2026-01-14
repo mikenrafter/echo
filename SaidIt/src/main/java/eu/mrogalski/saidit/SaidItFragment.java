@@ -153,7 +153,6 @@ public class SaidItFragment extends Fragment {
     private TextView rec_indicator;
     private TextView rec_time;
 
-    private ImageButton rate_on_google_play;
     private ImageView heart;
 
     // Callback for minute input prompts used in range export flow
@@ -392,22 +391,9 @@ public class SaidItFragment extends Fragment {
         rec_indicator = (TextView) rootView.findViewById(R.id.rec_indicator);
         rec_time = (TextView) rootView.findViewById(R.id.rec_time);
 
-        rate_on_google_play = (ImageButton) rootView.findViewById(R.id.rate_on_google_play);
-
         final Animation pulse = AnimationUtils.loadAnimation(activity, R.anim.pulse);
         heart = (ImageView) rootView.findViewById(R.id.heart);
         heart.startAnimation(pulse);
-
-        rate_on_google_play.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mafik/echo")));
-                } catch (android.content.ActivityNotFoundException anfe) {
-                    // ignore
-                }
-            }
-        });
 
         heart.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -444,23 +430,6 @@ public class SaidItFragment extends Fragment {
                 @Override
                 public void onClick(View v) {
                     startActivity(new Intent(activity, SettingsActivity.class));
-                }
-            });
-
-            // Expand hit area by 15px to avoid accidental taps on the listen button
-            settingsIcon.post(new Runnable() {
-                @Override
-                public void run() {
-                    View parent = (View) settingsIcon.getParent();
-                    if (parent == null) return;
-                    android.graphics.Rect rect = new android.graphics.Rect();
-                    settingsIcon.getHitRect(rect);
-                    int extra = 15; // pixels
-                    rect.top -= extra;
-                    rect.bottom += extra;
-                    rect.left -= extra;
-                    rect.right += extra;
-                    parent.setTouchDelegate(new android.view.TouchDelegate(rect, settingsIcon));
                 }
             });
         }
@@ -544,19 +513,26 @@ public class SaidItFragment extends Fragment {
                 }
             }
 
-            // Format memorized time as hh:mm:ss
+            // Format memorized time as hh:mm:ss / hh:mm:ss (recorded / total)
             int memorizedSeconds = Math.round(memorized);
             int hours = memorizedSeconds / 3600;
             int minutes = (memorizedSeconds % 3600) / 60;
             int seconds = memorizedSeconds % 60;
             String memorizedText = String.format("%02d:%02d:%02d", hours, minutes, seconds);
             
-            if (!history_size.getText().equals(memorizedText)) {
-                history_size.setText(memorizedText);
+            int totalMemorySeconds = Math.max(0, Math.round(totalMemory));
+            int totalHours = totalMemorySeconds / 3600;
+            int totalMinutes = (totalMemorySeconds % 3600) / 60;
+            int totalSeconds = totalMemorySeconds % 60;
+            String totalMemoryText = String.format("%02d:%02d:%02d", totalHours, totalMinutes, totalSeconds);
+            
+            String memorizedAndMaxText = String.format("%s / %s", memorizedText, totalMemoryText);
+            
+            if (!history_size.getText().equals(memorizedAndMaxText)) {
+                history_size.setText(memorizedAndMaxText);
             }
 
             int recordedSeconds = Math.max(0, Math.round(recorded));
-            int totalMemorySeconds = Math.max(0, Math.round(totalMemory));
             String recordedHms = formatHms(recordedSeconds);
             String totalHms = formatHms(totalMemorySeconds);
             String combined = recordedHms + " / " + totalHms;
@@ -694,15 +670,6 @@ public class SaidItFragment extends Fragment {
                                 boolean hasContent = !allActivityBlocks.isEmpty() ||
                                     (silenceGroups != null && !silenceGroups.isEmpty());
                                 
-                                if (!hasContent) {
-                                    // Keep container visible but show it's empty if it was visible before
-                                    if (activityTimelineContainer.getVisibility() == View.VISIBLE) {
-                                        activityTimeline.removeAllViews();
-                                    }
-                                    return;
-                                }
-                                
-                                // Make timeline always visible once we have content
                                 activityTimelineContainer.setVisibility(View.VISIBLE);
                                 
                                 // Render paginated timeline
@@ -889,35 +856,20 @@ public class SaidItFragment extends Fragment {
         
         LinearLayout blockLayout = new LinearLayout(activity);
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
-        blockLayout.setPadding(10, 5, 10, 5);
+        int paddingDp = (int)activity.getResources().getDisplayMetrics().density;
+        blockLayout.setPadding(paddingDp * 10, paddingDp * 15, paddingDp * 10, paddingDp * 15);
         
         // Make the entire row clickable (but not filler blocks)
         blockLayout.setClickable(block.isRecorded);
         blockLayout.setFocusable(block.isRecorded);
         
-        // Create a custom drawable with right border for status indication
+        // Set background with touch feedback
         float density = activity.getResources().getDisplayMetrics().density;
         int borderWidth = (int)(4 * density);
         
-        // Create shape drawable for the row background
         android.graphics.drawable.GradientDrawable bgDrawable = new android.graphics.drawable.GradientDrawable();
+        bgDrawable.setColor(android.graphics.Color.TRANSPARENT);
         
-        // For filler blocks, use lighter styling with gray background
-        if (!block.isRecorded) {
-            bgDrawable.setColor(activity.getResources().getColor(R.color.gray_f));  // Light gray background
-        } else {
-            bgDrawable.setColor(android.graphics.Color.TRANSPARENT);
-            
-            // Set right border based on status (only for recorded blocks)
-            if (status.borderColor != android.R.color.transparent) {
-                int color = activity.getResources().getColor(status.borderColor);
-                bgDrawable.setStroke(borderWidth, color);
-                // For dotted borders (partial status), we'd need a different approach
-                // Android doesn't support dotted borders easily, so we'll use solid for now
-            }
-        }
-        
-        // Layer with selector background for touch feedback
         android.graphics.drawable.StateListDrawable selector = new android.graphics.drawable.StateListDrawable();
         selector.addState(new int[]{android.R.attr.state_pressed}, 
             activity.getResources().getDrawable(android.R.drawable.list_selector_background));
@@ -976,7 +928,7 @@ public class SaidItFragment extends Fragment {
         blockLayout.addView(textView);
         
         // Only show save button for recorded blocks
-        if (showSaveButton && block.isRecorded) {
+        if (showSaveButton) {
             TextView saveText = new TextView(activity);
             
             // Display status if available, otherwise show save from/to
@@ -998,13 +950,16 @@ public class SaidItFragment extends Fragment {
             saveText.setPadding(20, 10, 20, 10);
             saveText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
             
-            // Make the entire row selectable regardless of status
-            blockLayout.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    handleActivityBlockSelection(block, blockIndex);
-                }
-            });
+            // only recorded rows should be selectable
+            if (block.isRecorded) {
+                // Make the entire row selectable regardless of status
+                blockLayout.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        handleActivityBlockSelection(block, blockIndex);
+                    }
+                });
+            }
             
             blockLayout.addView(saveText);
         }
@@ -1077,7 +1032,7 @@ public class SaidItFragment extends Fragment {
     private BlockStatus calculateBlockStatus(ActivityBlockBuilder.ActivityBlock block) {
         // Check if block is unrecorded (padding) - highest priority
         if (!block.isRecorded) {
-            return new BlockStatus("(not recorded)", R.color.gray_8, false);
+            return new BlockStatus("(disabled)", R.color.gray_8, false);
         }
         
         long blockStart = block.startTimeMillis;

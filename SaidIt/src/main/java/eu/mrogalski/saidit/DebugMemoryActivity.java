@@ -68,7 +68,7 @@ public class DebugMemoryActivity extends Activity {
         ScrollView scrollView = new ScrollView(this);
         LinearLayout mainLayout = new LinearLayout(this);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setPadding(20, 20, 20, 20);
+        mainLayout.setPadding(20, 32, 20, 20);
         scrollView.addView(mainLayout);
 
         TextView titleView = new TextView(this);
