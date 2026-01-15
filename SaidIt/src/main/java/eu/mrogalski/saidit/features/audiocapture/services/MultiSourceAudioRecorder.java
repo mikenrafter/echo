@@ -67,21 +67,21 @@ public class MultiSourceAudioRecorder {
     
     /**
      * This class is now implemented in SaidItService using AudioPlaybackCapture API.
-     * Direct usage of this class is not required - use SaidItService methods instead.
+     * Direct usage of this class is not required - use the audio capture service instead.
      * 
-     * @deprecated Use SaidItService.setMediaProjection() and related methods instead
+     * @deprecated Use event-based audio capture methods instead
      */
     @Deprecated
     public void initialize(AudioSource audioSource, int sampleRate, int bufferSize) {
-        Log.w(TAG, "MultiSourceAudioRecorder is deprecated. Use SaidItService methods instead.");
+        Log.w(TAG, "MultiSourceAudioRecorder is deprecated. Use event-based audio capture instead.");
     }
     
     /**
-     * @deprecated Use SaidItService methods instead
+     * @deprecated Use event-based audio capture methods instead
      */
     @Deprecated
     public void start() {
-        Log.w(TAG, "MultiSourceAudioRecorder is deprecated. Use SaidItService methods instead.");
+        Log.w(TAG, "MultiSourceAudioRecorder is deprecated. Use event-based audio capture instead.");
     }
     
     /**

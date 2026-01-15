@@ -1,5 +1,7 @@
 package eu.mrogalski.saidit;
 import eu.mrogalski.saidit.shared.models.StorageMode;
+import eu.mrogalski.saidit.shared.models.SilenceGroup;
+import eu.mrogalski.saidit.shared.models.TimelineSegment;
 
 import android.annotation.SuppressLint;
 import android.app.AlarmManager;
@@ -105,6 +107,8 @@ public class SaidItService extends Service {
     volatile int silenceThreshold = 500; // Threshold for activity detection
 
     // Silence groups tracking (service-level data models)
+    // Moved to shared.models.SilenceGroup
+    /*
     static class SilenceGroup {
         public long endTimeMillis;
         public long durationMillis;
@@ -113,8 +117,11 @@ public class SaidItService extends Service {
             this.durationMillis = durationMillis;
         }
     }
+    */
 
     // Timeline segment tracking for activity/silence display
+    // Moved to shared.models.TimelineSegment
+    /*
     public static class TimelineSegment {
         public enum Type { ACTIVITY, SILENCE }
         public Type type;
@@ -145,6 +152,7 @@ public class SaidItService extends Service {
             return endTimeMillis == 0;
         }
     }
+    */
     
     // Timeline tracking variables
     private final java.util.List<TimelineSegment> timelineSegments = new java.util.ArrayList<>();

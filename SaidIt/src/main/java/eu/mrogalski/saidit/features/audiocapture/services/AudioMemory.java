@@ -6,6 +6,8 @@ import android.util.Log;
 import java.io.IOException;
 import java.util.LinkedList;
 
+import eu.mrogalski.saidit.features.audioprocessing.services.AudioEffects;
+
 public class AudioMemory {
 
     private static final String TAG = AudioMemory.class.getSimpleName();

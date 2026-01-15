@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import eu.mrogalski.saidit.shared.models.SilenceGroup;
+
 /**
  * Builds activity blocks from silence groups.
  * Activity blocks represent periods of non-silence audio, grouped into chunks of a configurable size.
@@ -42,7 +44,7 @@ public class ActivityBlockBuilder {
      * @return List of activity blocks, or empty list if no silence groups or invalid input
      */
         public static List<ActivityBlock> buildActivityBlocks(
-            List<SaidItService.SilenceGroup> silenceGroups,
+            List<SilenceGroup> silenceGroups,
             float totalMemorySeconds,
             long blockSizeMillis) {
         
@@ -58,7 +60,7 @@ public class ActivityBlockBuilder {
         }
         
         // Sort silence groups by endTime (ascending order)
-        List<SaidItService.SilenceGroup> sortedGroups = new ArrayList<>();
+        List<SilenceGroup> sortedGroups = new ArrayList<>();
         if (silenceGroups != null) {
             sortedGroups.addAll(silenceGroups);
             Collections.sort(sortedGroups, (g1, g2) -> Long.compare(g1.endTimeMillis, g2.endTimeMillis));
@@ -74,7 +76,7 @@ public class ActivityBlockBuilder {
         } else {
             if (!sortedGroups.isEmpty()) {
                 // Use the oldest silence group as the oldest time
-                SaidItService.SilenceGroup oldestGroup = sortedGroups.get(0);
+                eu.mrogalski.saidit.shared.models.SilenceGroup oldestGroup = sortedGroups.get(0);
                 oldestTime = oldestGroup.endTimeMillis - oldestGroup.durationMillis;
             } else {
                 // No information – assume no blocks
@@ -89,7 +91,7 @@ public class ActivityBlockBuilder {
         // Track activity periods as gaps between silence groups
         long lastActivityStart = oldestTime;
         
-        for (SaidItService.SilenceGroup silenceGroup : sortedGroups) {
+        for (eu.mrogalski.saidit.shared.models.SilenceGroup silenceGroup : sortedGroups) {
             long silenceStart = silenceGroup.endTimeMillis - silenceGroup.durationMillis;
             
             // There's activity between lastActivityStart and silenceStart
