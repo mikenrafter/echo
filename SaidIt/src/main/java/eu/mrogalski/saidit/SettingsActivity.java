@@ -1,4 +1,5 @@
 package eu.mrogalski.saidit;
+import eu.mrogalski.saidit.shared.models.StorageMode;
 
 import android.app.Activity;
 import android.content.ComponentName;

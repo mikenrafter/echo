@@ -1,4 +1,5 @@
 package eu.mrogalski.saidit;
+import eu.mrogalski.saidit.shared.models.StorageMode;
 
 import android.content.ComponentName;
 import android.content.Context;
