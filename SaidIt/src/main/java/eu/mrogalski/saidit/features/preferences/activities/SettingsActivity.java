@@ -1,4 +1,8 @@
-package eu.mrogalski.saidit;
+package eu.mrogalski.saidit.features.preferences.activities;
+
+import eu.mrogalski.saidit.R;
+import eu.mrogalski.saidit.SaidIt;
+import eu.mrogalski.saidit.SaidItService;
 import eu.mrogalski.saidit.shared.models.StorageMode;
 
 import android.app.Activity;

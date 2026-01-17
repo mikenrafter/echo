@@ -1,4 +1,5 @@
 package eu.mrogalski.saidit;
+import eu.mrogalski.saidit.features.preferences.activities.SettingsActivity;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;

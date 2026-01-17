@@ -1,4 +1,8 @@
-package eu.mrogalski.saidit;
+package eu.mrogalski.saidit.features.audiocapture.activities;
+
+import eu.mrogalski.saidit.R;
+import eu.mrogalski.saidit.SaidItService;
+import eu.mrogalski.saidit.shared.models.SilenceGroup;
 
 import android.app.Activity;
 import android.app.Fragment;
@@ -40,7 +44,7 @@ public class SkippedSilenceActivity extends Activity {
         if (echo == null) return;
         echo.getSilenceGroups(new SaidItService.SilenceGroupsCallback() {
             @Override
-            public void onGroups(java.util.List<SaidItService.SilenceGroup> groups) {
+            public void onGroups(java.util.List<SilenceGroup> groups) {
                 ListView list = findViewById(R.id.silence_list);
                 TextView empty = findViewById(R.id.empty_text);
                 if (groups == null || groups.isEmpty()) {
@@ -51,7 +55,7 @@ public class SkippedSilenceActivity extends Activity {
                 empty.setVisibility(View.GONE);
                 list.setVisibility(View.VISIBLE);
                 ArrayList<String> items = new ArrayList<>();
-                for (SaidItService.SilenceGroup g : groups) {
+                for (SilenceGroup g : groups) {
                     String when = DateUtils.formatDateTime(SkippedSilenceActivity.this, g.endTimeMillis,
                             DateUtils.FORMAT_SHOW_TIME | DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_WEEKDAY);
                     long secs = g.durationMillis / 1000;
