@@ -1,5 +1,6 @@
 package eu.mrogalski.saidit;
 import eu.mrogalski.saidit.features.preferences.activities.SettingsActivity;
+import eu.mrogalski.saidit.features.audiocapture.activities.SkippedSilenceActivity;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
