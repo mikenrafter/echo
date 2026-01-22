@@ -1,6 +1,10 @@
 package eu.mrogalski.saidit;
 import eu.mrogalski.saidit.features.preferences.activities.SettingsActivity;
 import eu.mrogalski.saidit.features.audiocapture.activities.SkippedSilenceActivity;
+import eu.mrogalski.saidit.features.audioexport.services.ActivityBlockBuilder;
+import eu.mrogalski.saidit.features.audioexport.activities.RecordingDoneDialog;
+import eu.mrogalski.saidit.shared.models.SilenceGroup;
+import eu.mrogalski.saidit.shared.models.TimelineSegment;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -557,11 +561,11 @@ public class SaidItFragment extends Fragment {
         // Silence groups only change at 20s segment boundaries, not continuously
         echo.getSilenceGroups(new SaidItService.SilenceGroupsCallback() {
             @Override
-            public void onGroups(java.util.List<SaidItService.SilenceGroup> silenceGroups) {
+            public void onGroups(java.util.List<SilenceGroup> silenceGroups) {
                 if (echo == null) return;
                 echo.getTimeline(new SaidItService.TimelineCallback() {
                     @Override
-                    public void onTimeline(java.util.List<SaidItService.TimelineSegment> segments, SaidItService.TimelineSegment currentSegment, float totalMemorySeconds) {
+                    public void onTimeline(java.util.List<TimelineSegment> segments, TimelineSegment currentSegment, float totalMemorySeconds) {
                         final Activity activity = getActivity();
                         if (activity == null) return;
                         
@@ -911,7 +915,7 @@ public class SaidItFragment extends Fragment {
 
 
     // Add a view for a silence group from AudioMemory (20-second segments)
-    private void addSilenceGroupView(SaidItService.SilenceGroup group) {
+    private void addSilenceGroupView(SilenceGroup group) {
         final Activity activity = getActivity();
         if (activity == null) return;
         

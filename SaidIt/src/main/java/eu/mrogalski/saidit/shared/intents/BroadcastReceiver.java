@@ -1,4 +1,7 @@
-package eu.mrogalski.saidit;
+package eu.mrogalski.saidit.shared.intents;
+
+import eu.mrogalski.saidit.SaidIt;
+import eu.mrogalski.saidit.SaidItService;
 import eu.mrogalski.saidit.shared.models.StorageMode;
 
 import android.content.ComponentName;

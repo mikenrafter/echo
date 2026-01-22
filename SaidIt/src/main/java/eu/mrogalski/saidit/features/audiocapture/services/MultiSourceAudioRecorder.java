@@ -5,6 +5,8 @@ import android.media.AudioRecord;
 import android.os.Build;
 import android.util.Log;
 
+import eu.mrogalski.saidit.features.audiocapture.models.AudioSource;
+
 /**
  * Multi-source audio recorder for capturing microphone and device audio.
  * 

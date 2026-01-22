@@ -1,4 +1,8 @@
-package eu.mrogalski.saidit;
+package eu.mrogalski.saidit.features.audioexport.activities;
+
+import eu.mrogalski.saidit.BuildConfig;
+import eu.mrogalski.saidit.R;
+import eu.mrogalski.saidit.ThemedDialog;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;

@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import eu.mrogalski.saidit.features.audiocapture.services.AudioMemory;
+
 /**
  * Manages a circular buffer of audio files on disk.
  * When the disk usage exceeds the configured limit, old files are automatically deleted.

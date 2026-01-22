@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package eu.mrogalski.saidit.shared.models;
 public final class IntentResult {
 
     private final String contents;

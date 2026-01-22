@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package eu.mrogalski.saidit.features.audioprocessing.services;
 
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;

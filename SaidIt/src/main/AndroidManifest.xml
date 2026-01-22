@@ -51,7 +51,7 @@
             android:exported="false">
         </service>
 
-        <receiver android:name=".BroadcastReceiver"
+        <receiver android:name=".shared.intents.BroadcastReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

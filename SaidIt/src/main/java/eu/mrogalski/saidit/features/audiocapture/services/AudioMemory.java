@@ -20,7 +20,7 @@ public class AudioMemory {
     private boolean currentWasFilled = false;
     private byte[] current = null;
     private int offset = 0;
-    static final int CHUNK_SIZE = 1920000; // 20 seconds of 48kHz wav (single channel, 16-bit samples) (1875 kB)
+    public static final int CHUNK_SIZE = 1920000; // 20 seconds of 48kHz wav (single channel, 16-bit samples) (1875 kB)
     
     // Silence skipping configuration
     private boolean silenceSkipEnabled = false;

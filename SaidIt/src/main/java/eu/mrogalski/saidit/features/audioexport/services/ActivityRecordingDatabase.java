@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import eu.mrogalski.saidit.features.audioexport.models.ActivityRecording;
+
 /**
  * Simple database for storing activity recording metadata using SharedPreferences.
  * For a production app, consider using SQLite for better performance with many recordings.
