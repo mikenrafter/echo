@@ -284,6 +284,9 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.storage_mode_memory).setOnClickListener(storageModeClickListener);
         root.findViewById(R.id.storage_mode_disk).setOnClickListener(storageModeClickListener);
 
+        // Initialize boot recording controls
+        initBootRecordingControls(root);
+
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
         initSampleRateButton(root, R.id.quality_48kHz, 48000, 44100);
@@ -971,6 +974,25 @@ public class SettingsActivity extends Activity {
                 }
             }
         });
+    }
+
+    private void initBootRecordingControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox startRecordingOnBoot = (CheckBox) root.findViewById(R.id.start_recording_on_boot);
+        if (startRecordingOnBoot != null) {
+            startRecordingOnBoot.setChecked(prefs.getBoolean(SaidIt.START_RECORDING_ON_BOOT_KEY, false));
+            
+            startRecordingOnBoot.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.START_RECORDING_ON_BOOT_KEY, isChecked).apply();
+                    Toast.makeText(SettingsActivity.this,
+                            isChecked ? "Recording will auto-start on device boot" : "Auto-start on boot disabled",
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
     }
 
     private void initExportEffectsControls(View root) {

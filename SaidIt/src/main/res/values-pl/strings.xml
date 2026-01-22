@@ -117,4 +117,12 @@
     <string name="save_recording">Zapisz nagranie</string> <!-- must end sentence -->
     <string name="permission_required">Wymagane pozwolenie</string>
     <string name="permission_required_message">Echo aplikacja wymaga pozwolenia na nagrywanie i zapisywanie dźwięku. Proszę włączyć to w ustawieniach.</string>
+    
+    <!-- AI generated. Unsure if these are proper or offensive... -->
+    <!-- Boot and crash recovery -->
+    <string name="start_recording_on_boot">Uruchom nagrywanie przy starcie</string>
+    <string name="start_recording_on_boot_description">Automatycznie włącz nagrywanie gdy urządzenie się uruchamia</string>
+    <string name="crash_notification_title">Echo - Utracono pamięć</string>
+    <string name="crash_notification_message">Echo zostało zrestartowane. Bufor pamięci został utracony.</string>
+    <string name="oom_crash_notification_message">Echo zostało zrestartowane z powodu problemów z pamięcią. Rozmiar pamięci zmniejszony o 20MB.</string>
 </resources>

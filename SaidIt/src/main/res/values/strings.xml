@@ -216,6 +216,13 @@
     <string name="permission_required">Permission required</string>
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
     
+    <!-- Boot and crash recovery -->
+    <string name="start_recording_on_boot">Start recording on boot</string>
+    <string name="start_recording_on_boot_description">Automatically enable recording when device starts</string>
+    <string name="crash_notification_title">Echo Memory Lost</string>
+    <string name="crash_notification_message">Echo has restarted. Memory buffer was lost.</string>
+    <string name="oom_crash_notification_message">Echo has restarted due to memory issues. Memory size reduced by 20MB.</string>
+    
     <!-- Export error messages -->
     <string name="export_completed_memory_efficient">Export completed using memory-efficient mode (audio effects bypassed)</string>
     <string name="export_failed_oom">Export failed: Out of memory. Try reducing memory size or export duration.</string>

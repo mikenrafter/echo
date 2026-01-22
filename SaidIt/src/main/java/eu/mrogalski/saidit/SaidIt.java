@@ -68,6 +68,16 @@ public class SaidIt {
     // Memory debug mode (adds timestamping and reduces max memory to 80%)
     static final String DEBUG_MEMORY_ENABLED_KEY = "debug_memory_enabled";
     
+    // OOM handling configuration
+    static final String MEMORY_SIZE_VERIFIED_KEY = "memory_size_verified";
+    static final long MEMORY_REDUCTION_STEP_MB = 20; // Reduce by 20MB on OOM (as per user request)
+    
+    // Boot and crash recovery
+    static final String START_RECORDING_ON_BOOT_KEY = "start_recording_on_boot";
+    static final String LAST_KNOWN_MEMORY_SIZE_KEY = "last_known_memory_size";
+    static final String CRASH_DETECTED_KEY = "crash_detected";
+    static final String CRASH_WAS_OOM_KEY = "crash_was_oom";
+    
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
             "LTsUZgm0soga0mVVNGFj0qoATaoQCE/LamF7yrMCIFm9sEOB1guCEhzdr16sjysrVc2EPRisS83FoJ4K0R8" +
