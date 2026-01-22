@@ -46,9 +46,19 @@ public class BroadcastReceiver extends android.content.BroadcastReceiver {
 
         // Handle boot completed - start service if tutorial finished
         if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-            if (context.getSharedPreferences(SaidIt.PACKAGE_NAME, Context.MODE_PRIVATE)
-                    .getBoolean("skip_tutorial", false)) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(SaidIt.PACKAGE_NAME, Context.MODE_PRIVATE);
+            if (prefs.getBoolean("skip_tutorial", false)) {
+                // Always start the service
                 context.startService(new Intent(context, SaidItService.class));
+                
+                // Check if we should auto-start recording
+                boolean startRecordingOnBoot = prefs.getBoolean(SaidIt.START_RECORDING_ON_BOOT_KEY, false);
+                if (startRecordingOnBoot) {
+                    Log.d(TAG, "Auto-starting recording on boot");
+                    // Bind to service and enable listening
+                    bindAndExecute(context, new Intent(context, SaidItService.class)
+                        .setAction(ACTION_ENABLE_LISTENING));
+                }
             }
             return;
         }

@@ -95,6 +95,7 @@ public class SaidItService extends Service {
     volatile int gradientQualityHighRate = 48000;
     volatile int gradientQualityMidRate = 16000;
     volatile int gradientQualityLowRate = 8000;
+    private volatile boolean debugMemoryEnabled = false;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -144,6 +145,21 @@ public class SaidItService extends Service {
             return endTimeMillis == 0;
         }
     }
+
+    // Debug memory segment info (20s chunks with silence flag)
+    public static class MemoryDebugChunk {
+        public int chunkIndex;
+        public long startTimeMillis;
+        public long endTimeMillis;
+        public boolean isSilent;
+
+        MemoryDebugChunk(int chunkIndex, long startTimeMillis, long endTimeMillis, boolean isSilent) {
+            this.chunkIndex = chunkIndex;
+            this.startTimeMillis = startTimeMillis;
+            this.endTimeMillis = endTimeMillis;
+            this.isSilent = isSilent;
+        }
+    }
     
     // Timeline tracking variables
     private final java.util.List<TimelineSegment> timelineSegments = new java.util.ArrayList<>();
@@ -157,6 +173,39 @@ public class SaidItService extends Service {
         Log.d(TAG, "Reading native sample rate");
 
         final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+        
+        // Check for crash on previous run
+        boolean crashDetected = preferences.getBoolean(CRASH_DETECTED_KEY, false);
+        if (crashDetected) {
+            boolean wasOOM = preferences.getBoolean(CRASH_WAS_OOM_KEY, false);
+            showCrashNotification(wasOOM);
+            
+            // Handle OOM recovery: reduce memory if it was an OOM crash
+            if (wasOOM) {
+                long currentMemorySize = preferences.getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+                long currentMemorySizeMB = currentMemorySize / (1024 * 1024);
+                long minMemoryMB = 10; // Minimum memory size
+                
+                if (currentMemorySizeMB > minMemoryMB + MEMORY_REDUCTION_STEP_MB) {
+                    long newMemorySizeMB = currentMemorySizeMB - MEMORY_REDUCTION_STEP_MB;
+                    long newMemorySize = newMemorySizeMB * 1024 * 1024;
+                    preferences.edit().putLong(AUDIO_MEMORY_SIZE_KEY, newMemorySize).apply();
+                    Log.w(TAG, "OOM detected: Reduced memory from " + currentMemorySizeMB + "MB to " + newMemorySizeMB + "MB");
+                } else {
+                    Log.w(TAG, "OOM detected but already at minimum memory size (" + currentMemorySizeMB + "MB)");
+                }
+            }
+            
+            // Clear crash flags
+            preferences.edit()
+                .putBoolean(CRASH_DETECTED_KEY, false)
+                .putBoolean(CRASH_WAS_OOM_KEY, false)
+                .apply();
+        }
+        
+        // Set crash detection flag - will be cleared on normal shutdown
+        preferences.edit().putBoolean(CRASH_DETECTED_KEY, true).apply();
+        
         SAMPLE_RATE = preferences.getInt(SAMPLE_RATE_KEY, AudioTrack.getNativeOutputSampleRate (AudioManager.STREAM_MUSIC));
         Log.d(TAG, "Sample rate: " + SAMPLE_RATE);
         FILL_RATE = 2 * SAMPLE_RATE;
@@ -228,6 +277,12 @@ public class SaidItService extends Service {
 
     @Override
     public void onDestroy() {
+        // Clear crash detection flag on normal shutdown
+        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(CRASH_DETECTED_KEY, false)
+            .apply();
+        
         stopRecording(null, "");
         innerStopListening();
         stopForeground(true);
@@ -395,9 +450,19 @@ public class SaidItService extends Service {
                     // Low: remaining memory
                     long lowBytes = Math.max(0, memorySize - highBytes - midBytes);
                     
-                    audioMemoryHigh.allocate(highBytes);
-                    audioMemoryMid.allocate(midBytes);
-                    audioMemoryLow.allocate(lowBytes);
+                    boolean allocSuccess = audioMemoryHigh.allocate(highBytes) &&
+                                          audioMemoryMid.allocate(midBytes) &&
+                                          audioMemoryLow.allocate(lowBytes);
+                    
+                    if (!allocSuccess) {
+                        Log.e(TAG, "OOM during gradient quality memory allocation");
+                        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putBoolean(CRASH_WAS_OOM_KEY, true)
+                            .apply();
+                        state = STATE_READY;
+                        return;
+                    }
                     
                     recordingStartTimeMillis = System.currentTimeMillis();
                     
@@ -405,7 +470,15 @@ public class SaidItService extends Service {
                         "Hz, mid=" + (midBytes/1024/1024) + "MB@" + gradientQualityMidRate + 
                         "Hz, low=" + (lowBytes/1024/1024) + "MB@" + gradientQualityLowRate + "Hz");
                 } else {
-                    audioMemory.allocate(memorySize);
+                    if (!audioMemory.allocate(memorySize)) {
+                        Log.e(TAG, "OOM during memory allocation: " + (memorySize/1024/1024) + "MB");
+                        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putBoolean(CRASH_WAS_OOM_KEY, true)
+                            .apply();
+                        state = STATE_READY;
+                        return;
+                    }
                     Log.d(TAG, "Single ring allocated: " + (memorySize/1024/1024) + "MB@" + SAMPLE_RATE + "Hz");
                 }
                 
@@ -778,7 +851,13 @@ public class SaidItService extends Service {
             audioHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    audioMemory.allocate(memorySize);
+                    if (!audioMemory.allocate(memorySize)) {
+                        Log.e(TAG, "OOM during manual memory allocation: " + (memorySize/1024/1024) + "MB");
+                        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putBoolean(CRASH_WAS_OOM_KEY, true)
+                            .apply();
+                    }
                 }
             });
         }
@@ -1830,6 +1909,75 @@ public class SaidItService extends Service {
             }
         });
     }
+
+    public boolean isDebugMemoryEnabled() {
+        return debugMemoryEnabled;
+    }
+
+    public void setDebugMemoryEnabled(final boolean enabled) {
+        debugMemoryEnabled = enabled;
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                audioMemory.setDebugMemoryEnabled(enabled);
+                audioMemoryHigh.setDebugMemoryEnabled(enabled);
+                audioMemoryMid.setDebugMemoryEnabled(enabled);
+                audioMemoryLow.setDebugMemoryEnabled(enabled);
+            }
+        });
+    }
+
+    public interface MemoryDebugCallback {
+        void onMemoryDebug(java.util.List<MemoryDebugChunk> chunks);
+    }
+
+    public void getMemoryDebugChunks(final MemoryDebugCallback cb) {
+        if (cb == null) return;
+
+        final Handler sourceHandler = new Handler();
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                final java.util.ArrayList<MemoryDebugChunk> snapshot = new java.util.ArrayList<>();
+                if (debugMemoryEnabled) {
+                    if (gradientQualityEnabled) {
+                        appendMemoryDebugChunks(snapshot, audioMemoryHigh.getChunkDebugInfo(), gradientQualityHighRate * 2);
+                        appendMemoryDebugChunks(snapshot, audioMemoryMid.getChunkDebugInfo(), gradientQualityMidRate * 2);
+                        appendMemoryDebugChunks(snapshot, audioMemoryLow.getChunkDebugInfo(), gradientQualityLowRate * 2);
+                    } else {
+                        appendMemoryDebugChunks(snapshot, audioMemory.getChunkDebugInfo(), FILL_RATE);
+                    }
+
+                    java.util.Collections.sort(snapshot, new java.util.Comparator<MemoryDebugChunk>() {
+                        @Override
+                        public int compare(MemoryDebugChunk a, MemoryDebugChunk b) {
+                            return Long.compare(a.startTimeMillis, b.startTimeMillis);
+                        }
+                    });
+                }
+
+                sourceHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cb.onMemoryDebug(snapshot);
+                    }
+                });
+            }
+        });
+    }
+
+    private void appendMemoryDebugChunks(java.util.List<MemoryDebugChunk> output,
+                                         java.util.List<AudioMemory.ChunkDebugInfo> chunks,
+                                         int bytesPerSecond) {
+        if (chunks == null || bytesPerSecond <= 0) return;
+
+        long durationMillis = (long)((AudioMemory.CHUNK_SIZE * 1000f) / bytesPerSecond);
+        for (AudioMemory.ChunkDebugInfo info : chunks) {
+            long endTime = info.timestamp;
+            long startTime = endTime - durationMillis;
+            output.add(new MemoryDebugChunk(info.chunkIndex, startTime, endTime, info.isSilent));
+        }
+    }
     
     // Update timeline tracking based on volume level
     private void updateTimeline(int volumeLevel, int silenceThreshold) {
@@ -1975,6 +2123,39 @@ public class SaidItService extends Service {
         notificationManager.createNotificationChannel(channel);
 
         return notificationBuilder.build();
+    }
+    
+    /**
+     * Show a notification to inform user that the app crashed and memory buffer was lost.
+     * @param wasOOM If true, shows special message that memory was reduced
+     */
+    private void showCrashNotification(boolean wasOOM) {
+        Intent intent = new Intent(this, SaidItActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        String message = wasOOM ? 
+            getString(R.string.oom_crash_notification_message) : 
+            getString(R.string.crash_notification_message);
+
+        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, YOUR_NOTIFICATION_CHANNEL_ID)
+                .setContentTitle(getString(R.string.crash_notification_title))
+                .setContentText(message)
+                .setSmallIcon(R.drawable.ic_stat_notify_recording)
+                .setContentIntent(pendingIntent)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true);
+
+        // Create the notification channel if it doesn't exist
+        NotificationChannel channel = new NotificationChannel(
+                YOUR_NOTIFICATION_CHANNEL_ID,
+                "Recording Channel",
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        notificationManager.createNotificationChannel(channel);
+        
+        // Use a different ID for crash notifications
+        notificationManager.notify(FOREGROUND_NOTIFICATION_ID + 1, notificationBuilder.build());
     }
     
     /**
@@ -2323,6 +2504,37 @@ public class SaidItService extends Service {
      */
     public int getCrashLogCount() {
         return CrashHandler.getCrashLogCount(this);
+    }
+
+    /**
+     * Count VAD recordings saved on disk.
+     */
+    public int getVadRecordingCount() {
+        int count = 0;
+        // External music directory
+        count += countFilesInDirectory(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/VAD"));
+        // Internal app storage fallback
+        count += countFilesInDirectory(new File(getFilesDir(), "Echo/VAD"));
+        return count;
+    }
+
+    /**
+     * Count auto-save recordings saved on disk.
+     */
+    public int getAutoSaveCount() {
+        int count = 0;
+        // External music directory
+        count += countFilesInDirectory(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo/AutoSave"));
+        // Internal app storage fallback
+        count += countFilesInDirectory(new File(getFilesDir(), "Echo/AutoSave"));
+        return count;
+    }
+
+    private int countFilesInDirectory(File dir) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return 0;
+        File[] files = dir.listFiles();
+        if (files == null) return 0;
+        return files.length;
     }
 
 }

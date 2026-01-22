@@ -61,6 +61,8 @@ public class SaidItFragment extends Fragment {
     private TextView skippedGroupsInfo;
     private Button viewSkippedSilenceButton;
     private TextView crashLogsInfo;
+    private TextView vadCountInfo;
+    private TextView autoSaveCountInfo;
 
     ListenButtonClickListener listenButtonClickListener = new ListenButtonClickListener();
     RecordButtonClickListener recordButtonClickListener = new RecordButtonClickListener();
@@ -69,7 +71,6 @@ public class SaidItFragment extends Fragment {
     private boolean isRecording = false;
 
     private LinearLayout ready_section;
-    private TextView history_limit;
     private TextView history_size;
     // Removed history_size_title - no longer displaying "memory holds the most recent"
     private TextView volumeMeterLabel;
@@ -82,6 +83,36 @@ public class SaidItFragment extends Fragment {
     private static final int ITEMS_PER_PAGE = 10;
     private java.util.List<ActivityBlockBuilder.ActivityBlock> allActivityBlocks = new java.util.ArrayList<>();
     private java.util.List<ActivityBlockBuilder.ActivityBlock> futureActivityBlocks = new java.util.ArrayList<>(); // For scheduled recordings
+    private java.util.List<SaidItService.SilenceGroup> currentSilenceGroups = new java.util.ArrayList<>(); // Store silence groups for display
+    
+    // Track exports and schedules by timestamp ranges
+    private static class TimeRange {
+        long startMillis;
+        long endMillis;
+        
+        TimeRange(long startMillis, long endMillis) {
+            this.startMillis = startMillis;
+            this.endMillis = endMillis;
+        }
+        
+        // Check if this range overlaps with another range
+        boolean overlaps(long otherStart, long otherEnd) {
+            return startMillis < otherEnd && endMillis > otherStart;
+        }
+        
+        // Calculate overlap amount (0 if no overlap)
+        long overlapAmount(long otherStart, long otherEnd) {
+            if (!overlaps(otherStart, otherEnd)) return 0;
+            long overlapStart = Math.max(startMillis, otherStart);
+            long overlapEnd = Math.min(endMillis, otherEnd);
+            return overlapEnd - overlapStart;
+        }
+    }
+    
+    private java.util.List<TimeRange> exportedRanges = new java.util.ArrayList<>();
+    private java.util.List<TimeRange> scheduledRanges = new java.util.ArrayList<>();
+    private TimeRange currentlyExportingRange = null;
+    private java.util.List<TimeRange> vadOverlapRanges = new java.util.ArrayList<>();
     
     // Activity/Silence timeline display
     private LinearLayout activityTimelineContainer;
@@ -97,6 +128,10 @@ public class SaidItFragment extends Fragment {
     private int lastSilenceGroupsCount = -1;
     private long lastTimelineUpdate = 0;
     private static final long TIMELINE_UPDATE_INTERVAL_MS = 60000; // Only update every 60 seconds (1 minute) at most
+    
+    // Track recorded range for padding blocks
+    private long recordedRangeStart = 0;  // Oldest recorded time
+    private long recordedRangeEnd = 0;    // Newest recorded time
     
     // Track which activity blocks are selected for save range
     // Store absolute timestamps instead of just block references for robustness
@@ -118,7 +153,6 @@ public class SaidItFragment extends Fragment {
     private TextView rec_indicator;
     private TextView rec_time;
 
-    private ImageButton rate_on_google_play;
     private ImageView heart;
 
     // Callback for minute input prompts used in range export flow
@@ -228,11 +262,9 @@ public class SaidItFragment extends Fragment {
             }
         });
 
-        history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
         // history_size_title removed
 
-        history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
 
         listenButton = (Button) rootView.findViewById(R.id.listen_button);
@@ -262,6 +294,8 @@ public class SaidItFragment extends Fragment {
         skippedGroupsInfo = (TextView) rootView.findViewById(R.id.skipped_groups_info);
         viewSkippedSilenceButton = (Button) rootView.findViewById(R.id.view_skipped_silence_button);
         crashLogsInfo = (TextView) rootView.findViewById(R.id.crash_logs_info);
+        vadCountInfo = (TextView) rootView.findViewById(R.id.vad_count_info);
+        autoSaveCountInfo = (TextView) rootView.findViewById(R.id.autosave_count_info);
         
         // Activity/Silence timeline views
         activityTimelineContainer = (LinearLayout) rootView.findViewById(R.id.activity_timeline_container);
@@ -357,22 +391,9 @@ public class SaidItFragment extends Fragment {
         rec_indicator = (TextView) rootView.findViewById(R.id.rec_indicator);
         rec_time = (TextView) rootView.findViewById(R.id.rec_time);
 
-        rate_on_google_play = (ImageButton) rootView.findViewById(R.id.rate_on_google_play);
-
         final Animation pulse = AnimationUtils.loadAnimation(activity, R.anim.pulse);
         heart = (ImageView) rootView.findViewById(R.id.heart);
         heart.startAnimation(pulse);
-
-        rate_on_google_play.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mafik/echo")));
-                } catch (android.content.ActivityNotFoundException anfe) {
-                    // ignore
-                }
-            }
-        });
 
         heart.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -403,12 +424,15 @@ public class SaidItFragment extends Fragment {
             }
         });
 
-        rootView.findViewById(R.id.settings_button).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startActivity(new Intent(activity, SettingsActivity.class));
-            }
-        });
+        final View settingsIcon = rootView.findViewById(R.id.settings_icon);
+        if (settingsIcon != null) {
+            settingsIcon.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startActivity(new Intent(activity, SettingsActivity.class));
+                }
+            });
+        }
 
         if (viewSkippedSilenceButton != null) {
             viewSkippedSilenceButton.setOnClickListener(new View.OnClickListener() {
@@ -418,8 +442,39 @@ public class SaidItFragment extends Fragment {
                 }
             });
         }
+        
+        // Load scheduled recordings from preferences
+        loadScheduledRecordings();
+        
         serviceStateCallback.state(isListening, isRecording, 0, 0, 0, 0);
         return rootView;
+    }
+    
+    // Load scheduled recordings from preferences
+    private void loadScheduledRecordings() {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        
+        android.content.SharedPreferences prefs = activity.getSharedPreferences(
+            eu.mrogalski.saidit.SaidIt.PACKAGE_NAME, android.content.Context.MODE_PRIVATE);
+        
+        boolean scheduledEnabled = prefs.getBoolean(
+            eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_ENABLED_KEY, false);
+        
+        if (scheduledEnabled) {
+            long startTime = prefs.getLong(
+                eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_START_TIME_KEY, 0);
+            long endTime = prefs.getLong(
+                eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_END_TIME_KEY, 0);
+            
+            if (startTime > 0 && endTime > 0) {
+                // Only add if the scheduled time hasn't already passed
+                long now = System.currentTimeMillis();
+                if (endTime > now) {
+                    scheduledRanges.add(new TimeRange(startTime, endTime));
+                }
+            }
+        }
     }
 
     private SaidItService.StateCallback serviceStateCallback = new SaidItService.StateCallback() {
@@ -458,28 +513,33 @@ public class SaidItFragment extends Fragment {
                 }
             }
 
-            TimeFormat.naturalLanguage(resources, totalMemory, timeFormatResult);
-
-            if (!history_limit.getText().equals(timeFormatResult.text)) {
-                history_limit.setText(timeFormatResult.text);
-            }
-
-            // Format memorized time as hh:mm:ss
+            // Format memorized time as hh:mm:ss / hh:mm:ss (recorded / total)
             int memorizedSeconds = Math.round(memorized);
             int hours = memorizedSeconds / 3600;
             int minutes = (memorizedSeconds % 3600) / 60;
             int seconds = memorizedSeconds % 60;
             String memorizedText = String.format("%02d:%02d:%02d", hours, minutes, seconds);
             
-            if (!history_size.getText().equals(memorizedText)) {
-                history_size.setText(memorizedText);
+            int totalMemorySeconds = Math.max(0, Math.round(totalMemory));
+            int totalHours = totalMemorySeconds / 3600;
+            int totalMinutes = (totalMemorySeconds % 3600) / 60;
+            int totalSeconds = totalMemorySeconds % 60;
+            String totalMemoryText = String.format("%02d:%02d:%02d", totalHours, totalMinutes, totalSeconds);
+            
+            String memorizedAndMaxText = String.format("%s / %s", memorizedText, totalMemoryText);
+            
+            if (!history_size.getText().equals(memorizedAndMaxText)) {
+                history_size.setText(memorizedAndMaxText);
             }
 
-            TimeFormat.naturalLanguage(resources, recorded, timeFormatResult);
+            int recordedSeconds = Math.max(0, Math.round(recorded));
+            String recordedHms = formatHms(recordedSeconds);
+            String totalHms = formatHms(totalMemorySeconds);
+            String combined = recordedHms + " / " + totalHms;
 
-            if (!rec_time.getText().equals(timeFormatResult.text)) {
-                rec_indicator.setText(resources.getQuantityText(R.plurals.recorded, timeFormatResult.count));
-                rec_time.setText(timeFormatResult.text);
+            if (!rec_time.getText().equals(combined)) {
+                rec_indicator.setText(resources.getQuantityText(R.plurals.recorded, recordedSeconds));
+                rec_time.setText(combined);
             }
 
             // No separate skipped seconds display here; combined with groups below
@@ -527,6 +587,18 @@ public class SaidItFragment extends Fragment {
                             } else {
                                 crashLogsInfo.setVisibility(View.GONE);
                             }
+
+                            if (vadCountInfo != null) {
+                                int vadCount = echo.getVadRecordingCount();
+                                vadCountInfo.setText(resources.getString(R.string.vad_saved_count, vadCount));
+                                vadCountInfo.setVisibility(View.VISIBLE);
+                            }
+
+                            if (autoSaveCountInfo != null) {
+                                int autoSaveCount = echo.getAutoSaveCount();
+                                autoSaveCountInfo.setText(resources.getString(R.string.autosave_count, autoSaveCount));
+                                autoSaveCountInfo.setVisibility(View.VISIBLE);
+                            }
                         }
                         
                         // Update timeline only when skipped groups count changes or enough time has passed
@@ -566,6 +638,10 @@ public class SaidItFragment extends Fragment {
                         activity.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
+                                // Store silence groups for later use
+                                currentSilenceGroups = silenceGroups != null ? 
+                                    new java.util.ArrayList<>(silenceGroups) : new java.util.ArrayList<>();
+                                
                                 // Use block size from settings
                                 long blockSizeMillis = blockSizeMinutes * 60 * 1000;
                                 
@@ -578,6 +654,15 @@ public class SaidItFragment extends Fragment {
                                 // Store all blocks for pagination
                                 allActivityBlocks = activityBlocks != null ? activityBlocks : new java.util.ArrayList<>();
                                 
+                                // Track recorded range from activity blocks
+                                if (!allActivityBlocks.isEmpty()) {
+                                    recordedRangeStart = allActivityBlocks.get(0).startTimeMillis;
+                                    recordedRangeEnd = allActivityBlocks.get(allActivityBlocks.size() - 1).endTimeMillis;
+                                } else {
+                                    recordedRangeStart = 0;
+                                    recordedRangeEnd = 0;
+                                }
+                                
                                 // Reset to first page when timeline is updated
                                 currentPage = 0;
                                 
@@ -585,15 +670,6 @@ public class SaidItFragment extends Fragment {
                                 boolean hasContent = !allActivityBlocks.isEmpty() ||
                                     (silenceGroups != null && !silenceGroups.isEmpty());
                                 
-                                if (!hasContent) {
-                                    // Keep container visible but show it's empty if it was visible before
-                                    if (activityTimelineContainer.getVisibility() == View.VISIBLE) {
-                                        activityTimeline.removeAllViews();
-                                    }
-                                    return;
-                                }
-                                
-                                // Make timeline always visible once we have content
                                 activityTimelineContainer.setVisibility(View.VISIBLE);
                                 
                                 // Render paginated timeline
@@ -693,17 +769,22 @@ public class SaidItFragment extends Fragment {
         }
     }
     
-    // Render past page (existing pagination logic)
+    // Render past page (existing pagination logic with padding)
     private void renderPastPage(boolean showSaveButtons) {
         // Calculate pagination
         int totalBlocks = allActivityBlocks.size();
         int totalPages = getTotalPages();
         
+        // Keep track of displayed items count to ensure we have 10 items per page
+        int displayedItems = 0;
+        java.util.List<ActivityBlockBuilder.ActivityBlock> pageBlocks = new java.util.ArrayList<>();
+        
         // Display blocks in reverse order (newest first)
         // First block (newest) is always shown
         if (totalBlocks > 0) {
             ActivityBlockBuilder.ActivityBlock firstBlock = allActivityBlocks.get(totalBlocks - 1);
-            addActivityBlockView(firstBlock, totalBlocks - 1, showSaveButtons);
+            pageBlocks.add(firstBlock);
+            displayedItems++;
         }
         
         // Middle blocks (paginated)
@@ -713,14 +794,42 @@ public class SaidItFragment extends Fragment {
             
             for (int i = startIdx; i >= endIdx && i >= 1; i--) {
                 ActivityBlockBuilder.ActivityBlock block = allActivityBlocks.get(i);
-                addActivityBlockView(block, i, showSaveButtons);
+                pageBlocks.add(block);
+                displayedItems++;
             }
         }
         
         // Last block (oldest) is always shown
         if (totalBlocks > 1) {
             ActivityBlockBuilder.ActivityBlock lastBlock = allActivityBlocks.get(0);
-            addActivityBlockView(lastBlock, 0, showSaveButtons);
+            pageBlocks.add(lastBlock);
+            displayedItems++;
+        }
+        
+        // Add padding blocks if needed to reach 10 items per page
+        long blockSizeMillis = blockSizeMinutes * 60 * 1000;
+        if (displayedItems < ITEMS_PER_PAGE && totalBlocks > 0) {
+            // Calculate the oldest block's start time to create padding before it
+            long oldestBlockStart = allActivityBlocks.get(0).startTimeMillis;
+            int paddingNeeded = ITEMS_PER_PAGE - displayedItems;
+            
+            for (int i = 0; i < paddingNeeded; i++) {
+                // Create padding blocks going backward in time
+                long paddingBlockEnd = oldestBlockStart - (i * blockSizeMillis);
+                long paddingBlockStart = paddingBlockEnd - blockSizeMillis;
+                
+                ActivityBlockBuilder.ActivityBlock paddingBlock = 
+                    new ActivityBlockBuilder.ActivityBlock(paddingBlockStart, paddingBlockEnd);
+                paddingBlock.isRecorded = false;  // Mark as padding/unrecorded
+                paddingBlock.blockIndex = -1;    // Special index for padding
+                
+                pageBlocks.add(paddingBlock);
+            }
+        }
+        
+        // Add all blocks to view in order (already in correct order from pageBlocks)
+        for (ActivityBlockBuilder.ActivityBlock block : pageBlocks) {
+            addActivityBlockView(block, -1, showSaveButtons);
         }
     }
     
@@ -739,18 +848,75 @@ public class SaidItFragment extends Fragment {
             return;
         }
         
+        // Calculate silence duration within this block
+        long silenceDurationMs = calculateSilenceInBlock(block);
+        
+        // Calculate status for this block
+        BlockStatus status = calculateBlockStatus(block);
+        
         LinearLayout blockLayout = new LinearLayout(activity);
         blockLayout.setOrientation(LinearLayout.HORIZONTAL);
-        blockLayout.setPadding(10, 5, 10, 5);
+        int paddingDp = (int)activity.getResources().getDisplayMetrics().density;
+        blockLayout.setPadding(paddingDp * 10, paddingDp * 15, paddingDp * 10, paddingDp * 15);
         
-        // Make the entire row clickable
-        blockLayout.setClickable(true);
-        blockLayout.setFocusable(true);
-        blockLayout.setBackgroundResource(android.R.drawable.list_selector_background);
+        // Make the entire row clickable (but not filler blocks)
+        blockLayout.setClickable(block.isRecorded);
+        blockLayout.setFocusable(block.isRecorded);
+        
+        // Set background with touch feedback
+        float density = activity.getResources().getDisplayMetrics().density;
+        int borderWidth = (int)(4 * density);
+        
+        android.graphics.drawable.GradientDrawable bgDrawable = new android.graphics.drawable.GradientDrawable();
+        bgDrawable.setColor(android.graphics.Color.TRANSPARENT);
+        
+        android.graphics.drawable.StateListDrawable selector = new android.graphics.drawable.StateListDrawable();
+        selector.addState(new int[]{android.R.attr.state_pressed}, 
+            activity.getResources().getDrawable(android.R.drawable.list_selector_background));
+        selector.addState(new int[]{}, bgDrawable);
+        
+        blockLayout.setBackground(selector);
+        
+        // Determine if this is first or last row for borders
+        boolean isFirstRow = (blockIndex == allActivityBlocks.size() - 1) && blockIndex >= 0;
+        boolean isLastRow = (blockIndex == 0);
         
         TextView textView = new TextView(activity);
         // Display time range as "hh:mm-now" or "hh:mm-hh:mm" (left-aligned)
-        textView.setText(String.format("%s-%s", startTime, endTime));
+        // Include silence duration if present, or gray out if unrecorded
+        String displayText;
+        int textColor = activity.getResources().getColor(android.R.color.white);  // Default white text
+        
+        if (!block.isRecorded) {
+            // Unrecorded (padding) block - gray text
+            displayText = String.format("%s-%s", startTime, endTime);
+            textColor = activity.getResources().getColor(R.color.gray_8);
+            textView.setText(displayText);
+            textView.setTextColor(textColor);
+        } else if (silenceDurationMs > 0) {
+            // Format silence as (-mm:ss) in gray
+            int silenceSeconds = (int)(silenceDurationMs / 1000);
+            int minutes = silenceSeconds / 60;
+            int seconds = silenceSeconds % 60;
+            String silenceStr = String.format("(-%d:%02d)", minutes, seconds);
+            
+            // Use spannable string to color the silence portion
+            android.text.SpannableString spannable = new android.text.SpannableString(
+                String.format("%s-%s %s", startTime, endTime, silenceStr)
+            );
+            int start = String.format("%s-%s ", startTime, endTime).length();
+            spannable.setSpan(
+                new android.text.style.ForegroundColorSpan(activity.getResources().getColor(R.color.gray_8)),
+                start,
+                spannable.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
+            textView.setText(spannable);
+        } else {
+            displayText = String.format("%s-%s", startTime, endTime);
+            textView.setText(displayText);
+        }
+        
         textView.setTextSize(14);
         textView.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         textView.setLayoutParams(new LinearLayout.LayoutParams(
@@ -761,29 +927,177 @@ public class SaidItFragment extends Fragment {
         
         blockLayout.addView(textView);
         
+        // Only show save button for recorded blocks
         if (showSaveButton) {
-            Button saveButton = new Button(activity);
-            // Set button text based on selection state (right-aligned)
-            if (selectedFrom == null) {
-                saveButton.setText(R.string.save_from_here);
+            TextView saveText = new TextView(activity);
+            
+            // Display status if available, otherwise show save from/to
+            if (status.statusText != null && !status.statusText.isEmpty()) {
+                saveText.setText(status.statusText);
+                // Use a distinct color for status text
+                saveText.setTextColor(activity.getResources().getColor(status.borderColor));
             } else {
-                saveButton.setText(R.string.save_to_here);
-            }
-            saveButton.setTextSize(12);
-            saveButton.setPadding(20, 10, 20, 10);
-            
-            // Make the entire row selectable
-            blockLayout.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    handleActivityBlockSelection(block, blockIndex);
+                // Set text based on selection state (right-aligned)
+                if (selectedFrom == null) {
+                    saveText.setText(R.string.save_from_here);
+                } else {
+                    saveText.setText(R.string.save_to_here);
                 }
-            });
+                saveText.setTextColor(activity.getResources().getColor(R.color.gray_6));
+            }
             
-            blockLayout.addView(saveButton);
+            saveText.setTextSize(12);
+            saveText.setPadding(20, 10, 20, 10);
+            saveText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+            
+            // only recorded rows should be selectable
+            if (block.isRecorded) {
+                // Make the entire row selectable regardless of status
+                blockLayout.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        handleActivityBlockSelection(block, blockIndex);
+                    }
+                });
+            }
+            
+            blockLayout.addView(saveText);
         }
         
         activityTimeline.addView(blockLayout);
+        
+        // Add thin border for first/last rows (themed)
+        // Bottom border for first (newest) row, top border for last (oldest) row
+        if (isFirstRow) {
+            View borderView = new View(activity);
+            LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (int)(1 * density) // 1dp thin border
+            );
+            borderView.setLayoutParams(borderParams);
+            borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
+            activityTimeline.addView(borderView);
+        }
+        
+        if (isLastRow) {
+            // Add top border for last row by inserting at the beginning
+            View borderView = new View(activity);
+            LinearLayout.LayoutParams borderParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (int)(1 * density) // 1dp thin border
+            );
+            borderView.setLayoutParams(borderParams);
+            borderView.setBackgroundColor(activity.getResources().getColor(R.color.gray_c));
+            // Insert at position 0 to place it before the last row
+            activityTimeline.addView(borderView, activityTimeline.getChildCount() - 1);
+        }
+    }
+    
+    // Calculate total silence duration within an activity block
+    private long calculateSilenceInBlock(ActivityBlockBuilder.ActivityBlock block) {
+        long totalSilence = 0;
+        if (currentSilenceGroups == null) return 0;
+        
+        for (SaidItService.SilenceGroup silenceGroup : currentSilenceGroups) {
+            long silenceStart = silenceGroup.endTimeMillis - silenceGroup.durationMillis;
+            long silenceEnd = silenceGroup.endTimeMillis;
+            
+            // Check if silence overlaps with block
+            if (silenceStart < block.endTimeMillis && silenceEnd > block.startTimeMillis) {
+                // Calculate overlap
+                long overlapStart = Math.max(silenceStart, block.startTimeMillis);
+                long overlapEnd = Math.min(silenceEnd, block.endTimeMillis);
+                totalSilence += (overlapEnd - overlapStart);
+            }
+        }
+        
+        return totalSilence;
+    }
+    
+    // Status for a timeline block
+    private static class BlockStatus {
+        String statusText; // "exported", "scheduled", "exporting", "detected", etc.
+        int borderColor;   // Color resource ID for right border
+        boolean isDotted;  // Whether border should be dotted (for partial)
+        
+        BlockStatus(String statusText, int borderColor, boolean isDotted) {
+            this.statusText = statusText;
+            this.borderColor = borderColor;
+            this.isDotted = isDotted;
+        }
+    }
+    
+    // Calculate the status of a block based on exports, schedules, VAD, etc.
+    // Priority: unrecorded > VAD > exporting > exported > scheduled
+    private BlockStatus calculateBlockStatus(ActivityBlockBuilder.ActivityBlock block) {
+        // Check if block is unrecorded (padding) - highest priority
+        if (!block.isRecorded) {
+            return new BlockStatus("(disabled)", R.color.gray_8, false);
+        }
+        
+        long blockStart = block.startTimeMillis;
+        long blockEnd = block.endTimeMillis;
+        long blockDuration = blockEnd - blockStart;
+        long now = System.currentTimeMillis();
+        
+        // Check if block has already concluded (never show scheduled for past blocks)
+        boolean blockConcluded = blockEnd < now;
+        
+        // Check VAD overlap (highest priority)
+        long vadOverlap = 0;
+        for (TimeRange vadRange : vadOverlapRanges) {
+            vadOverlap += vadRange.overlapAmount(blockStart, blockEnd);
+        }
+        if (vadOverlap > 0) {
+            boolean isPartial = vadOverlap < blockDuration;
+            String text = isPartial ? "partially detected" : "detected";
+            return new BlockStatus(text, R.color.gold, isPartial);
+        }
+        
+        // Check if currently exporting (second priority)
+        if (currentlyExportingRange != null) {
+            long exportingOverlap = currentlyExportingRange.overlapAmount(blockStart, blockEnd);
+            if (exportingOverlap > 0) {
+                boolean isPartial = exportingOverlap < blockDuration;
+                String text = isPartial ? "partially exporting" : "exporting";
+                return new BlockStatus(text, R.color.blue_light, isPartial);
+            }
+        }
+        
+        // Check exported ranges (third priority)
+        long exportedOverlap = 0;
+        for (TimeRange exportedRange : exportedRanges) {
+            exportedOverlap += exportedRange.overlapAmount(blockStart, blockEnd);
+        }
+        if (exportedOverlap > 0) {
+            boolean isPartial = exportedOverlap < blockDuration;
+            String text = isPartial ? "partially exported" : "exported";
+            return new BlockStatus(text, R.color.green_light, isPartial);
+        }
+        
+        // Check scheduled ranges (lowest priority, but never show if block concluded)
+        if (!blockConcluded) {
+            long scheduledOverlap = 0;
+            for (TimeRange scheduledRange : scheduledRanges) {
+                scheduledOverlap += scheduledRange.overlapAmount(blockStart, blockEnd);
+            }
+            if (scheduledOverlap > 0) {
+                boolean isPartial = scheduledOverlap < blockDuration;
+                String text = isPartial ? "partially scheduled" : "scheduled";
+                return new BlockStatus(text, R.color.orange_light, isPartial);
+            }
+        }
+        
+        // No special status - transparent border
+        return new BlockStatus("", android.R.color.transparent, false);
+    }
+
+    // Format seconds into HH:MM:SS
+    private String formatHms(int totalSeconds) {
+        int hours = totalSeconds / 3600;
+        int minutes = (totalSeconds % 3600) / 60;
+        int seconds = totalSeconds % 60;
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds);
     }
     
     // Format time as hh:mm or "now"
@@ -836,10 +1150,12 @@ public class SaidItFragment extends Fragment {
         blockLayout.addView(textView);
         
         if (showSaveButton) {
-            Button scheduleButton = new Button(activity);
-            scheduleButton.setText("Schedule Recording");
-            scheduleButton.setTextSize(12);
-            scheduleButton.setPadding(20, 10, 20, 10);
+            TextView scheduleText = new TextView(activity);
+            scheduleText.setText("Schedule Recording");
+            scheduleText.setTextSize(12);
+            scheduleText.setPadding(20, 10, 20, 10);
+            scheduleText.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+            scheduleText.setTextColor(activity.getResources().getColor(R.color.gray_6));
             
             // Handle scheduling action
             blockLayout.setOnClickListener(new View.OnClickListener() {
@@ -849,7 +1165,7 @@ public class SaidItFragment extends Fragment {
                 }
             });
             
-            blockLayout.addView(scheduleButton);
+            blockLayout.addView(scheduleText);
         }
         
         activityTimeline.addView(blockLayout);
@@ -889,10 +1205,16 @@ public class SaidItFragment extends Fragment {
                             .putString(eu.mrogalski.saidit.SaidIt.SCHEDULED_RECORDING_FILENAME_KEY, filename)
                             .apply();
                         
+                        // Track this scheduled range
+                        scheduledRanges.add(new TimeRange(block.startTimeMillis, block.endTimeMillis));
+                        
                         // Notify service to setup scheduled recording
                         if (echo != null) {
                             echo.setupScheduledRecording(block.startTimeMillis, block.endTimeMillis, filename);
                         }
+                        
+                        // Refresh timeline to show scheduled status
+                        updateTimelineDisplay();
                         
                         Toast.makeText(activity, 
                             "Recording scheduled for " + startTimeStr + ". It will be saved automatically using partial file writing.",
@@ -975,6 +1297,10 @@ public class SaidItFragment extends Fragment {
         final float fromSecondsAgo = fromSecondsTmp;
         final float toSecondsAgo = toSecondsTmp;
         
+        // Store the time range for tracking
+        final long exportStartTime = fromStartTime;
+        final long exportEndTime = toEndTime;
+        
         // Prompt for filename
         View dialogView = View.inflate(activity, R.layout.dialog_save_recording, null);
         EditText fileName = dialogView.findViewById(R.id.recording_name);
@@ -989,8 +1315,12 @@ public class SaidItFragment extends Fragment {
                 @Override
                 public void onClick(DialogInterface dialog, int which) {
                     if(fileName.getText().toString().length() > 0){
+                        // Mark as currently exporting
+                        currentlyExportingRange = new TimeRange(exportStartTime, exportEndTime);
+                        updateTimelineDisplay(); // Show exporting status
+                        
                         echo.dumpRecordingRange(fromSecondsAgo, toSecondsAgo, 
-                            new SaidItFragment.PromptFileReceiver(activity), 
+                            new SaidItFragment.ExportTrackingFileReceiver(activity, exportStartTime, exportEndTime), 
                             fileName.getText().toString());
                     } else {
                         Toast.makeText(activity, "Please enter a file name", Toast.LENGTH_SHORT).show();
@@ -1272,6 +1602,42 @@ public class SaidItFragment extends Fragment {
 
         @Override
         public void fileReady(final File file, float runtime) {
+            new RecordingDoneDialog()
+                    .setFile(file)
+                    .setRuntime(runtime)
+                    .show(activity.getFragmentManager(), "Recording Done");
+        }
+    }
+    
+    // File receiver that tracks exports for timeline status display
+    class ExportTrackingFileReceiver implements SaidItService.WavFileReceiver {
+        private Activity activity;
+        private long exportStartTime;
+        private long exportEndTime;
+        
+        public ExportTrackingFileReceiver(Activity activity, long exportStartTime, long exportEndTime) {
+            this.activity = activity;
+            this.exportStartTime = exportStartTime;
+            this.exportEndTime = exportEndTime;
+        }
+        
+        @Override
+        public void fileReady(final File file, float runtime) {
+            // Mark export as complete
+            currentlyExportingRange = null;
+            exportedRanges.add(new TimeRange(exportStartTime, exportEndTime));
+            
+            // Update timeline to show exported status
+            if (activity != null) {
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateTimelineDisplay();
+                    }
+                });
+            }
+            
+            // Show the recording done dialog
             new RecordingDoneDialog()
                     .setFile(file)
                     .setRuntime(runtime)

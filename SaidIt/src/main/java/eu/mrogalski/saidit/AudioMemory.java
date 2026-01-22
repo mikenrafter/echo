@@ -30,28 +30,55 @@ public class AudioMemory {
     private int currentGroupSegments = 0; // Segments in the current silence group
     private int totalSkippedGroups = 0; // Total number of silence groups skipped
     private final LinkedList<SilenceGroupEntry> silenceGroups = new LinkedList<>(); // Log of silence groups
+    
+    // Memory debug mode tracking
+    private boolean debugMemoryEnabled = false;
+    public static class ChunkDebugInfo {
+        long timestamp;      // When this chunk was filled
+        boolean isSilent;    // Whether this chunk is silent
+        int chunkIndex;      // Sequential index for tracking
+        
+        ChunkDebugInfo(long timestamp, boolean isSilent, int chunkIndex) {
+            this.timestamp = timestamp;
+            this.isSilent = isSilent;
+            this.chunkIndex = chunkIndex;
+        }
+    }
+    private final LinkedList<ChunkDebugInfo> chunkDebugInfo = new LinkedList<>();
+    private int chunkCounter = 0;
 
-    synchronized public void allocate(long sizeToEnsure) {
-        long currentSize = getAllocatedMemorySize();
-        while(currentSize < sizeToEnsure) {
-            currentSize += CHUNK_SIZE;
-            free.addLast(new byte[CHUNK_SIZE]);
+    /**
+     * Attempts to allocate the requested memory size.
+     * @param sizeToEnsure Target memory size in bytes
+     * @return true if allocation succeeded, false if OutOfMemoryError occurred
+     */
+    synchronized public boolean allocate(long sizeToEnsure) {
+        try {
+            long currentSize = getAllocatedMemorySize();
+            while(currentSize < sizeToEnsure) {
+                currentSize += CHUNK_SIZE;
+                free.addLast(new byte[CHUNK_SIZE]);
+            }
+            while(!free.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
+                currentSize -= CHUNK_SIZE;
+                free.removeLast();
+            }
+            while(!filled.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
+                currentSize -= CHUNK_SIZE;
+                filled.removeFirst();
+            }
+            if((current != null) && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
+                //currentSize -= CHUNK_SIZE;
+                current = null;
+                offset = 0;
+                currentWasFilled = false;
+            }
+            System.gc();
+            return true;
+        } catch (OutOfMemoryError e) {
+            Log.e(TAG, "OutOfMemoryError during allocation: " + (sizeToEnsure / (1024 * 1024)) + " MB", e);
+            return false;
         }
-        while(!free.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
-            currentSize -= CHUNK_SIZE;
-            free.removeLast();
-        }
-        while(!filled.isEmpty() && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
-            currentSize -= CHUNK_SIZE;
-            filled.removeFirst();
-        }
-        if((current != null) && (currentSize - CHUNK_SIZE >= sizeToEnsure)) {
-            //currentSize -= CHUNK_SIZE;
-            current = null;
-            offset = 0;
-            currentWasFilled = false;
-        }
-        System.gc();
     }
 
     synchronized public long getAllocatedMemorySize() {
@@ -144,9 +171,12 @@ public class AudioMemory {
                             currentGroupSegments = 0;
                         }
                         currentGroupSegments++;
+                        // Track in debug mode (as skipped silent chunk)
+                        trackChunkDebugInfo(true);
                     } else {
                         // Not enough silent segments yet, advance normally
                         filled.addLast(current);
+                        trackChunkDebugInfo(true); // Track as silent chunk
                         current = null;
                         offset = 0;
                     }
@@ -154,6 +184,7 @@ public class AudioMemory {
                     // Not silent, reset counter and advance normally
                     consecutiveSilentSegments = 0;
                     filled.addLast(current);
+                    trackChunkDebugInfo(false); // Track as non-silent chunk
                     current = null;
                     offset = 0;
                     // If we were in a silence group, close it now
@@ -240,6 +271,49 @@ public class AudioMemory {
     public synchronized java.util.ArrayList<SilenceGroupEntry> getSilenceGroupsSnapshot() {
         // Create a snapshot with current timestamps for pruning calculation
         return new java.util.ArrayList<>(silenceGroups);
+    }
+    
+    /**
+     * Enable or disable debug memory mode.
+     * When enabled, each chunk is tagged with timestamp and silence status.
+     * This increases memory overhead, so max memory usage should be reduced to ~80%.
+     */
+    public synchronized void setDebugMemoryEnabled(boolean enabled) {
+        this.debugMemoryEnabled = enabled;
+        if (enabled) {
+            Log.d(TAG, "Debug memory mode enabled - chunks will be tagged with timestamp and silence status");
+        } else {
+            Log.d(TAG, "Debug memory mode disabled");
+            chunkDebugInfo.clear();
+        }
+    }
+    
+    /**
+     * Get debug info for all chunks currently in memory.
+     * Returns a snapshot of chunk timestamps and silence status.
+     */
+    public synchronized java.util.ArrayList<ChunkDebugInfo> getChunkDebugInfo() {
+        return new java.util.ArrayList<>(chunkDebugInfo);
+    }
+    
+    /**
+     * Track a chunk in debug mode.
+     * Called internally when a chunk is filled.
+     */
+    private void trackChunkDebugInfo(boolean isSilent) {
+        if (!debugMemoryEnabled) return;
+        
+        long timestamp = System.currentTimeMillis();
+        ChunkDebugInfo info = new ChunkDebugInfo(timestamp, isSilent, chunkCounter++);
+        chunkDebugInfo.addLast(info);
+        
+        // Limit debug info size to match filled chunks
+        while (chunkDebugInfo.size() > filled.size() + 1) {
+            chunkDebugInfo.removeFirst();
+        }
+        
+        Log.d(TAG, String.format("Chunk %d tracked: timestamp=%d, silent=%b", 
+            info.chunkIndex, timestamp, isSilent));
     }
 
 }

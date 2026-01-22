@@ -284,6 +284,9 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.storage_mode_memory).setOnClickListener(storageModeClickListener);
         root.findViewById(R.id.storage_mode_disk).setOnClickListener(storageModeClickListener);
 
+        // Initialize boot recording controls
+        initBootRecordingControls(root);
+
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
         initSampleRateButton(root, R.id.quality_48kHz, 48000, 44100);
@@ -317,6 +320,9 @@ public class SettingsActivity extends Activity {
         
         // Initialize accordion/collapsible sections
         initAccordionSections(root);
+
+    // Initialize debug memory controls
+    initDebugMemoryControls(root);
 
         //debugPrintCodecs();
 
@@ -970,6 +976,25 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    private void initBootRecordingControls(View root) {
+        final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
+        
+        final CheckBox startRecordingOnBoot = (CheckBox) root.findViewById(R.id.start_recording_on_boot);
+        if (startRecordingOnBoot != null) {
+            startRecordingOnBoot.setChecked(prefs.getBoolean(SaidIt.START_RECORDING_ON_BOOT_KEY, false));
+            
+            startRecordingOnBoot.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    prefs.edit().putBoolean(SaidIt.START_RECORDING_ON_BOOT_KEY, isChecked).apply();
+                    Toast.makeText(SettingsActivity.this,
+                            isChecked ? "Recording will auto-start on device boot" : "Auto-start on boot disabled",
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+    }
+
     private void initExportEffectsControls(View root) {
         final SharedPreferences prefs = getSharedPreferences(SaidIt.PACKAGE_NAME, MODE_PRIVATE);
 
@@ -1207,9 +1232,23 @@ public class SettingsActivity extends Activity {
         setupAccordionHeader(root, R.id.header_device_audio, R.id.section_device_audio);
         setupAccordionHeader(root, R.id.header_dual_source, R.id.section_dual_source);
         setupAccordionHeader(root, R.id.header_vad, R.id.section_vad);
+        setupAccordionHeader(root, R.id.header_debug_memory, R.id.section_debug_memory);
+        setupAccordionHeader(root, R.id.header_about, R.id.section_about);
         
-        // Additional sections can be added as layout is refactored
-        // Note: If headers don't exist yet in layout, this won't crash but won't do anything
+        // Setup GitHub button in About section
+        android.widget.ImageButton githubButton = (android.widget.ImageButton) root.findViewById(R.id.rate_on_google_play);
+        if (githubButton != null) {
+            githubButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mafik/echo")));
+                    } catch (android.content.ActivityNotFoundException anfe) {
+                        // ignore
+                    }
+                }
+            });
+        }
     }
     
     /**
@@ -1254,5 +1293,18 @@ public class SettingsActivity extends Activity {
         }
         // Add appropriate arrow
         header.setText((isExpanded ? "▼ " : "▶ ") + text);
+    }
+
+    private void initDebugMemoryControls(View root) {
+        Button debugMemoryButton = (Button) root.findViewById(R.id.debug_memory_button);
+        if (debugMemoryButton != null) {
+            debugMemoryButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Intent intent = new Intent(SettingsActivity.this, DebugMemoryActivity.class);
+                    startActivity(intent);
+                }
+            });
+        }
     }
 }

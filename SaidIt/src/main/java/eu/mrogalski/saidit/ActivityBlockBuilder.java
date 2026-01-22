@@ -22,11 +22,13 @@ public class ActivityBlockBuilder {
         public long endTimeMillis;        // When this block ended
         public long durationMillis;       // Total duration of this block
         public int blockIndex;            // 0-based index from oldest to newest
+        public boolean isRecorded;        // Whether this block contains recorded data (false for padding)
         
         public ActivityBlock(long startTimeMillis, long endTimeMillis) {
             this.startTimeMillis = startTimeMillis;
             this.endTimeMillis = endTimeMillis;
             this.durationMillis = endTimeMillis - startTimeMillis;
+            this.isRecorded = true;       // Default to recorded
         }
     }
     

@@ -43,15 +43,15 @@
     </plurals>
 
     <string name="clip_recording">CLIP RECORDING</string>
-    <string name="range_help">Choose a start (FROM) and end (TO) time in minutes ago. "Now" means end at the current moment.</string>
+    <string name="range_help">Select 2 time blocks to export them and everything between them.</string>
 
     <string name="default_price">$ 3.90</string>
 
     <string name="record_description">To keep recording after saving memory with one of the buttons above, hold it longer.</string>
 
     <string name="upper_memory_limit_start">Memory is limited at</string>
-    <string name="upper_memory_limit_settings_start">You can change it by altering</string>
-    <string name="upper_memory_limit_settings_end">settings.</string>
+    <string name="upper_memory_limit_settings_start"></string>
+    <string name="upper_memory_limit_settings_end">Settings</string>
 
     <string name="read_more_at">If you want to know more read Frequently Asked Questions at</string>
     <string name="rate_invite">Do you enjoy Echo? You can show your support by sponsoring it on GitHub.</string>
@@ -216,10 +216,24 @@
     <string name="permission_required">Permission required</string>
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
     
+    <!-- Boot and crash recovery -->
+    <string name="start_recording_on_boot">Start recording on boot</string>
+    <string name="start_recording_on_boot_description">Automatically enable recording when device starts</string>
+    <string name="crash_notification_title">Echo Memory Lost</string>
+    <string name="crash_notification_message">Echo has restarted. Memory buffer was lost.</string>
+    <string name="oom_crash_notification_message">Echo has restarted due to memory issues. Memory size reduced by 20MB.</string>
+    
     <!-- Export error messages -->
     <string name="export_completed_memory_efficient">Export completed using memory-efficient mode (audio effects bypassed)</string>
     <string name="export_failed_oom">Export failed: Out of memory. Try reducing memory size or export duration.</string>
     <string name="crash_logs_available">%d crash log(s) available in Echo/Crashes</string>
+    <string name="vad_saved_count">VAD recordings on disk: %d</string>
+    <string name="autosave_count">Auto-saves on disk: %d</string>
+    
+        <!-- Debug Memory -->
+        <string name="debug_memory_label">Debug Memory</string>
+        <string name="debug_memory_option">View memory usage details</string>
+        <string name="debug_memory_description">View heap memory, native memory, and other memory statistics</string>
     <!--
     <string name="compress_help"><b>WAV</b> - oznacza brak jakiejkolwiek kompresji - jest to format najlepiej oszczędzający baterię i cechujący się najlepszą jakością. Jego wadą jest duże zużycie pamięci.\n
 <b>3GP</b> - oferuje najmocniejszą kompresję ale jest bardzo energożerny i może usunąć z nagrania drobne detale\n
